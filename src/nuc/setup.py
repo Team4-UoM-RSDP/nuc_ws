@@ -3,7 +3,7 @@ from glob import glob
 
 from setuptools import find_packages, setup
 
-package_name = 'nuc'
+package_name = "nuc"
 
 setup(
     name=package_name,
