@@ -11,7 +11,7 @@
   <depend>tf2_ros</depend>
   <depend>geometry_msgs</depend>
   <depend>ros_gz_interfaces</depend>
-  <depend>leo_controller_interface_package</depend>
+  <depend>controller_interfaces</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
