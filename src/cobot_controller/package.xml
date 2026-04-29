@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>cobot_controller</name>
+  <version>0.0.0</version>
+  <description>MyCobot 280 Pi MoveIt and gripper control test.</description>
+  <maintainer email="174347826+bt-nav@users.noreply.github.com">btnav</maintainer>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- ROS2 Core -->
+  <depend>rclcpp</depend>
+  <depend>controller_interfaces</depend>
+  <depend>std_msgs</depend>
+
+  <!-- MoveIt -->
+  <depend>moveit_core</depend>
+  <depend>moveit_ros_planning</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
