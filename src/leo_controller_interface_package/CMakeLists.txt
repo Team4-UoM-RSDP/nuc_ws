@@ -16,13 +16,14 @@ find_package(rosidl_default_generators REQUIRED)
 #### ROS2 Interface Directives ####
 set(interface_files
   # Messages
-  "msg/TaskSpacePose.msg"
-  "msg/WheelAngularVelocities.msg"
+  "msg/DetectedObjects.msg"
+  "msg/DetectObjectsOn.msg"
 
   # Services
   "srv/TurnExploreOff.srv"
   "srv/TurnExploreOn.srv"
   "srv/ControllerSet.srv"
+  "srv/ControllerPositionSet.srv"
 
 )
 
