@@ -1,0 +1,4 @@
+#Sets the cobot configuration setting
+int32 config
+---
+bool success

@@ -1,0 +1,7 @@
+#Send a detected objects position to the controller
+float64 w
+float64 x
+float64 y
+float64 z
+---
+bool success
