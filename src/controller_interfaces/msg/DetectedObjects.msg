@@ -1,2 +1,4 @@
-float64 right_wheel_angular_velocity
-float64 left_wheel_angular_velocity
+#passes a detected objects global position
+float32 x
+float32 y
+float32 z

@@ -2,13 +2,19 @@ import rclpy
 from rclpy.node import Node
 import tf2_ros
 import numpy as np
+from sklearn.cluster import DBSCAN
 from rclpy.action import ActionServer
 from rclpy.action.server import ServerGoalHandle
+from rclpy.task import Future
 
 from controller_interfaces import TurnExploreOn
 from controller_interfaces import TurnExploreOff
 from controller_interfaces import ControllerSet
 from controller_interfaces import ControllerPositionSet
+from controller_interfaces import DetectedObjects
+from controller_interfaces import DetectObjectsOn
+from controller_interfaces import DetectObjectsOff
+from controller_interfaces import ExploringComplete
 
 class ControllerNode(Node):
     
@@ -30,8 +36,31 @@ class ControllerNode(Node):
         self.tf_listener = tf2_ros.TransformListener(self.transform_listener_buffer, self)
         self.parent_name="world"
         self.child_name="leo1/base_link"
-         
-        #Initialise the 
+
+        ###################################################
+        #Topic and Service initialisation
+
+        #initialise topic subscribers
+        self.object_detection_subscriber = self.create_subscription(
+            msg_type=DetectedObjects,
+            topic='/detected_objects',
+            callback=self.record_detected_object_position,
+            qos_profile=1)
+        
+        
+        #Initialise the service clients
+
+        #Object detection
+        self.object_detection_on = self.create_client(
+             srv_type=DetectObjectsOn,
+             srv_name='/turn_object_detection_on')
+        
+        self.object_detection_off = self.create_client(
+             srv_type=DetectObjectsOff,
+             srv_name='/turn_object_detection_off')
+        
+
+        #Nav
         self.service_client_robot_explore_on = self.create_client(
              srv_type=TurnExploreOn,
              srv_name='/turn_explore_on')
@@ -40,6 +69,8 @@ class ControllerNode(Node):
              srv_type=TurnExploreOff,
              srv_name='/turn_explore_off')
         
+
+        #Cobot
         self.service_client_controller_set = self.create_client(
             srv_type=ControllerSet,
             srv_name='/controller_set')
@@ -48,19 +79,61 @@ class ControllerNode(Node):
             srv_type=ControllerPositionSet,
             srv_name='/controller_position_set')
         
+        #initialise service server
+        #Nav
+        self.service_server_exploring_complete = self.create_service(
+            srv_type=ExploringComplete,
+            srv_name='/exploring_complete',
+            callback=self.exploring_complete_service_callback)
         
+        #####################################################################
+        
+        #future variables
+        self.explore_on_future=None
+        self.explore_off_future=None
+
+        self.controller_set_future=None
+        self.controller_position_set_future=None
+
+        self.dectect_objects_on_future=None
+        self.dectect_objects_off_future=None
+
+
+        #Logic variables
+        self.explore_requested=False
+        self.manipulator_start=False
+        self.exploring_complete=False
+
+        #Object detection lists
+        self.initial_object_list=[]
+        
+        
+        ########################################
         #Wait for service servers to come online
+
+        #Nav
         while not self.service_client_robot_explore_on.wait_for_service(timeout_sec=1.0):
             self.get_logger().info(f'service {self.service_client_robot_explore_on.srv_name} not available, waiting...')
         while not self.service_client_robot_explore_off.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info(f'service {self.service_client_robot__explore_off.srv_name} not available, waiting...')
+            self.get_logger().info(f'service {self.service_client_robot_explore_off.srv_name} not available, waiting...')
+        while not self.service_server_exploring_complete.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info(f'service {self.service_server_exploring_complete.srv_name} not available, waiting...')
+            
+        #Cobot
         while not self.service_client_controller_set.wait_for_service(timeout_sec=1.0):
             self.get_logger().info(f'service {self.service_client_robot_controller_set.srv_name} not available, waiting...')
         while not self.service_client_controller_position_set.wait_for_service(timeout_sec=1.0):
             self.get_logger().info(f'service {self.service_client_controller_position_set.srv_name} not available, waiting...')
-
         
 
+        #Object detection
+        while not self.object_detection_on.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info(f'service {self.object_detection_on.srv_name} not available, waiting...')
+        while not self.object_detection_off.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info(f'service {self.object_detection_off.srv_name} not available, waiting...')
+
+        
+        #######################################
     
 
     def main_loop_callback(self):
@@ -86,85 +159,176 @@ class ControllerNode(Node):
 
 
             case 1:
-                #start exploration
+                
                 #manipulator switches between far scan 0 and 1
-                #object detection returns 
+                
+                if self.manipulator_start == False:
+                    request_manipulator_config_1 = ControllerSet.Request()
+                    request_manipulator_config_1.config = 1
+                    
+                    if self.controller_set_future is not None and not self.controller_set_future.done():
+                        self.controller_set_future.cancel()
+                        self.get_logger().warn('Config 1 cancelled is controller node still running? ')
+                        
+                        
+                    self.controller_set_future=self.service_client_robot_on.call_async(request_manipulator_config_1)
+                    self.controller_set_future.add_done_callback(self.config_1_set)
+
+
+                #start exploration
+                if self.manipulator_start == True:
+                    request_explore_on = TurnExploreOn.Request()
+                    
+                    if self.explore_on_future is not None and not self.explore_on_future.done():
+                        self.explore_on_future.cancel()
+                        self.get_logger().warn('Explore on cancelled is nav node still running? ')
+                        
+                        
+                    self.explore_on_future = self.service_client_robot_on.call_async(request_explore_on)
+                    self.explore_on_future.add_done_callback(self.after_explore_on)
+                #start object detection
+                if self.explore_requested == True:
+                    request_object_detection_on = DetectObjectsOn.Request()
+                    
+                    if self.dectect_objects_on_future is not None and not self.dectect_objects_on_future.done():
+                        self.dectect_objects_on_future.cancel()
+                        self.get_logger().warn('Object detection on cancelled is camera node still running? ')
+                        
+                        
+                    self.dectect_objects_on_future=self.service_client_robot_on.call_async(request_object_detection_on)
+                    self.dectect_objects_on_future.add_done_callback(self.after_object_detection_on)
+            case 2:
+                #object detection storing returns 
+                self.store_initial_object_list = True
+                #Once exploring has complete turn off object detection and generate list of detected clusters 
+                #in order of largest to smallest no. of cluster points 
+                if self.exploring_complete == True:
+                    self.store_initial_object_list = False
+                    request_object_detection_off = DetectObjectsOff.Request()
+                    
+                    if self.dectect_objects_off_future is not None and not self.dectect_objects_off_future.done():
+                        self.dectect_objects_off_future.cancel()
+                        self.get_logger().warn('Object detection off cancelled is camera node still running? ')
+                        
+                        
+                    self.dectect_objects_off_future=self.service_client_robot_on.call_async(request_object_detection_off)
+                    self.dectect_objects_off_future.add_done_callback(self.after_initial_object_detection_off)
+            case 3:
+                #uses /goal_pose to navigate to grasping reach from the detected object at the top of the found list
+                current_position_check=self.initial_object_list.pop(0)
                 pass
+            case 4:
+                #sends manipulator to close scan spin
+                #starts object detection to close check for block
+                #if object detected 10 times over a set period go to case 5
+                #else go back to case 3
+                pass
+            case 5:
+                #use found average position of block
+                #manipulator grabs block 
+                #once block is grabbed(service response callback )go case 6
+                pass
+            case 6:
+                #return to starting position
+                #use object detection for sorting bin
+                #if sorting bin detected go case 7
+                #else case 8
+                pass
+            case 7:
+                #move to placing distance
+                #call manipulator to place 
+                #if blocks_returned=3 end
+                #else back to case 3
+                pass
+                
+            
+            case 8:
+                #rotate rover 45 degrees
+                
+                #if rotation hit count 3 move backwards 30cm
+                #back to case 6
+                pass
+                
+                    
+
+                    
+    #format the initial list to remove duplicates and any objects detected within a 20cm radius of eachother 
+    # are averaged to a single object
+    def after_initial_object_detection_off(self,future):
+        response = future.result()
+        if response.success == True:
+            
+            # eps=0.2 (20cm), min_samples=1 (Keep everything)
+            db = DBSCAN(eps=0.2, min_samples=1).fit(self.initial_object_list)
+            labels = db.labels_
+
+            # Create a list of dictionaries containing cluster center and no points in cluster
+            results = []
+            for label in set(labels):
+                mask = (labels == label)
+                cluster_points = self.initial_object_list[mask]
+                
+                results.append({
+                    'position': cluster_points.mean(axis=0),
+                    'count': len(cluster_points),
+                    
+                })
+
+            # Sort the entire list by count (highest density first)
+            results.sort(key=lambda x: x['count'], reverse=True)
+            self.initial_object_list=[]
+            for item in results:
+                self.initial_object_list.append(item['position'])
+
+            self.initial_object_list = results
+            self.current_case = 3
+            
+
+    def exploring_complete_service_callback(self,request,response):
+
+        response.success=True
+        self.exploring_complete=True
+        return response
+
+
+    def record_detected_object_position(self,msg:DetectedObjects):
+        if self.store_initial_object_list==True:
+            msg_array=[msg.x,msg.y,msg.z]
+            self.initial_object_list.append(msg_array)
+
+
+
+
+
+    def after_object_detection_on(self,future):
+        response=future.result()
+        if response.success==True:
+            #next case
+            self.current_case=2
+            #reset logic variables
+            self.manipulator_start==False
+            self.explore_requested=False
+
+
+
+    def config_1_set(self,future):
+        response=future.result()
+        if response.success==True:
+            self.manipulator_start==True
+            self.controller_set_future=None
+
+
+    #Prevents multiple explore on services being sent                
+    def after_explore_on(self,future:Future):
+        response=future.result()
+        if response.success==True:
+            self.explore_requested=True
+            self.explore_on_future=None
+            
 
 
            
-    def which_move_control(self):
-        self.time_for_rotation=45
-        self.time_for_linear=45#must be at least distance*10
-        if self.is_robot_on==True:
-            if self.time_increment<(self.time_for_rotation*10):
-                self.rotation_control()
-            elif self.time_increment<((self.time_for_linear+self.time_for_rotation)*10):
-                self.linear_control()
-            else:
-                self.robot_turn_off()
-                self.get_logger().info('Robot movement complete switching off')
-                self.is_robot_on=False
-                
-        
-        
-        
-    def rotation_control(self):
-        
-        angle:float=-69
-        angle_rad=np.deg2rad(angle)
-        update_frequency=0.1
-        
-        anglular_velocity=((self.wheelbase*angle_rad)/(2*self.wheel_radius*self.time_for_rotation))
-
-        wheel_velocities_rotate=WheelAngularVelocities()
-        wheel_velocities_rotate.left_wheel_angular_velocity=-anglular_velocity
-        wheel_velocities_rotate.right_wheel_angular_velocity=anglular_velocity
-        self.wheel_velocity_publisher.publish(wheel_velocities_rotate)
-        self.time_increment+=1
-        #self.get_logger().info(f'current time that you should know of is:{self.time_increment/10}')
-        
-        
-
-    def linear_control(self):
-        
-        distance=1
-        
-        angular_velocity=distance/(self.wheel_radius*self.time_for_linear)
-        wheel_velocities_rotate=WheelAngularVelocities()
-        wheel_velocities_rotate.left_wheel_angular_velocity=angular_velocity
-        wheel_velocities_rotate.right_wheel_angular_velocity=angular_velocity
-        self.wheel_velocity_publisher.publish(wheel_velocities_rotate)
-        self.time_increment+=1
-        #self.get_logger().info(f'current time that you should know of is:{self.time_increment/10}')
-       
-        
-    def robot_turn_off(self):
-        while not self.service_client_robot_off.wait_for_service(timeout_sec=1):
-            self.get_logger().info(f'{self.service_client_robot_off.srv_name} service is not yet available')
-        self.future_off: Future = None
-      
-        request_off=TurnRobotOff.Request()
-        if self.future_off is not None and not self.future_off.done():
-            self.future_off.cancel()
-            self.get_logger().warn('Turn on cancelled is operator node still running? ')
-            
-            
-        self.future_off=self.service_client_robot_off.call_async(request_off)
-        self.future_off.add_done_callback(self.after_robot_off)
-
-     
-    def after_robot_off(self,future_off:Future):
-        wheel_velocities_rotate=WheelAngularVelocities()
-        wheel_velocities_rotate.left_wheel_angular_velocity=0.0
-        wheel_velocities_rotate.right_wheel_angular_velocity=0.0
-        self.wheel_velocity_publisher.publish(wheel_velocities_rotate)
-        response=future_off.result()
-        if response.success==True:
-            self.get_logger().info('Robot off sequence has succeeded!')
-        else:
-            self.get_logger().info(f'Off sequence response is: {response.success} robot did not turn off successfully!')
-
+    
 def main(args=None):
     try:
         rclpy.init(args=args)
