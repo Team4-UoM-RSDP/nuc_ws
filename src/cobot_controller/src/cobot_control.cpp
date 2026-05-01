@@ -220,7 +220,6 @@ private:
   bool scanBlock()
   {
     RCLCPP_INFO(node_->get_logger(), "Scanning final block position");
-     return
     if (!moveToPosition("scan_block"))
     {
       RCLCPP_ERROR(node_->get_logger(), "Failed to reach scan block position");
@@ -248,7 +247,7 @@ private:
     case 2:
       return scan("near"); // Rotate around to scan close to the rover
     case 3:
-      return scanBlock; // Hold position for to scan the block
+      return scanBlock(); // Hold position for to scan the block
     default:
       RCLCPP_WARN(node_->get_logger(), "Unknown ControllerSet config: %d", config);
       return false;
