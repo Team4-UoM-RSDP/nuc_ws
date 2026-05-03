@@ -16,6 +16,7 @@ find_package(rosidl_default_generators REQUIRED)
 #### ROS2 Interface Directives ####
 set(interface_files
   # Messages
+  
   "msg/DetectedObjects.msg"
 
   # Services
@@ -23,6 +24,9 @@ set(interface_files
   "srv/TurnExploreOn.srv"
   "srv/ControllerSet.srv"
   "srv/ControllerPositionSet.srv"
+  "srv/DetectObjectsOn.srv"
+  "srv/DetectObjectsOff.srv"
+  "srv/ExploringComplete.srv"
 
 )
 

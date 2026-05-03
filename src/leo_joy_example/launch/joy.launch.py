@@ -42,6 +42,7 @@ def generate_launch_description():
     executable='manager_node',
     name='manager_node',
     output='screen',
+
     
   )
 

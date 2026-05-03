@@ -22,7 +22,8 @@ setup(
   license='TODO: License declaration',
   tests_require=['pytest'],
   entry_points={
-    'console_scripts': [
+    'console_scripts': ["manager_node = ""leo_joy_example.manager_node:main",
+                        'object_detect_and_pick = demonstration_controller.object_detect_and_pick:main',
     ],
   },
 )

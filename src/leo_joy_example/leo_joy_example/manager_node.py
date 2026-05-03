@@ -10,8 +10,8 @@ class JoyLauncher(Node):
         super().__init__('joy_launcher_manager')
         self.subscription = self.create_subscription(Joy, '/joy', self.joy_callback, 10)
         self.process = None
-        self.button_index = 0 #square
-        self.last_button_state = 0
+        self.button_index = 3 #square
+        self.last_button_state = 3
         self.get_logger().info("Manager Node Started. Waiting for button press...")
 
     def joy_callback(self, msg):
@@ -30,7 +30,7 @@ class JoyLauncher(Node):
         self.get_logger().info("Launching Rover ros2 Nodes...")
         # Replace 'leo_joy_example' and 'joy.launch.py' with your specific package/file
         self.process = subprocess.Popen(
-            ['ros2', 'launch', 'controller_package', '.launch.py'],
+            ['ros2', 'run', 'demonstration_controller', 'object_detect_and_pick'],
             preexec_fn=os.setsid # Allows killing the whole process group
         )
 
