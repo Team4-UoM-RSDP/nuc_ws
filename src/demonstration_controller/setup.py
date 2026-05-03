@@ -24,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'object_detect_and_pick.py = demonstration_controller.object_detect_and_pick.py:main'
+            'object_detect_and_pick.py = demonstration_controller.object_detect_and_pick.py:main',
+            'object_detect_pick_place.py = demonstration_controller.object_detect_pick_place.py:main'
         ],
     },
 )
