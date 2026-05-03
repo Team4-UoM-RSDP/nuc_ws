@@ -17,7 +17,6 @@ find_package(rosidl_default_generators REQUIRED)
 set(interface_files
   # Messages
   "msg/DetectedObjects.msg"
-  "msg/DetectObjectsOn.msg"
 
   # Services
   "srv/TurnExploreOff.srv"
