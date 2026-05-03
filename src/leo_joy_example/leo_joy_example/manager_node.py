@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
+from geometry_msgs.msg import Twist
 import subprocess
 import os
 import signal
@@ -8,10 +9,12 @@ import signal
 class JoyLauncher(Node):
     def __init__(self):
         super().__init__('joy_launcher_manager')
+        self.publisher_leo_vel = self.create_publisher(Twist, '/cmd_vel', 10)
         self.subscription = self.create_subscription(Joy, '/joy', self.joy_callback, 10)
         self.process = None
-        self.button_index = 3 #square
-        self.last_button_state = 3
+        self.button_index = 2 #square
+        self.last_button_state = 0
+        self.stop_count=0
         self.get_logger().info("Manager Node Started. Waiting for button press...")
 
     def joy_callback(self, msg):
@@ -19,6 +22,7 @@ class JoyLauncher(Node):
 
         
         if current_button_state == 1 and self.last_button_state == 0:
+            self.get_logger().info("button pressed has been pressed:")
             if self.process is None:
                 self.start_nodes()
             else:
@@ -39,6 +43,26 @@ class JoyLauncher(Node):
             self.get_logger().info("Stopping Nodes (Manual Takeover Enabled)...")
             os.killpg(os.getpgid(self.process.pid), signal.SIGINT)
             self.process = None
+            stop_timer_period: float = 1/100
+            self.stop_timer = self.create_timer(stop_timer_period, self.stop_functions_publisher_callback)
+            
+           
+
+    def stop_functions_publisher_callback(self):
+        
+        msg = Twist()
+        msg.linear.x = 0.0
+        msg.angular.z = 0.0
+        self.publisher_leo_vel.publish(msg)
+
+        if self.stop_count==100:
+            self.stop_timer.cancel()
+            self.stop_count=0
+        
+        self.stop_count+=1
+
+
+            
 
 def main(args=None):
     try:
