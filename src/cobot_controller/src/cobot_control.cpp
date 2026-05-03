@@ -55,6 +55,16 @@ private:
   sensor_msgs::msg::JointState current_joint_state_;
   mutable std::mutex joint_state_mutex_;
 
+  // Joint names for the arm 
+  const std::vector<std::string> joint_names_ = {
+      "link1_to_link2",
+      "link2_to_link3",
+      "link3_to_link4",
+      "link4_to_link5",
+      "link5_to_link6",
+      "link6_to_link6_flange"
+  };
+
   // ============================================================================
   // INITIALIZATION HELPERS
   // ============================================================================
@@ -77,6 +87,14 @@ private:
         [this](const sensor_msgs::msg::JointState::SharedPtr msg)
         {
           this->jointStateCallback(msg);
+        });
+
+    // Subscribe to target joint positions for custom movement
+    node_->create_subscription<sensor_msgs::msg::JointState>(
+        "/target_joint_positions", 10,
+        [this](const sensor_msgs::msg::JointState::SharedPtr msg)
+        {
+          this->targetJointPositionsCallback(msg);
         });
 
     RCLCPP_INFO(node_->get_logger(), "ControllerSet service and joint state subscription initialized");
@@ -133,60 +151,86 @@ private:
   }
 
   /**
-   * @brief Attempt to plan and execute motion to a named target
+   * @brief Plan and execute with the current target (already set on arm_group_)
    * @param pipeline Pipeline ID (e.g., "stomp", "ompl")
    * @param planner Planner ID (e.g., "STOMP", "RRTConnectkConfigDefault")
-   * @param target Named target position
    * @return true if planning and execution succeeded, false otherwise
    */
-  bool planAndExecute(const std::string &pipeline, const std::string &planner,
-                      const std::string &target)
+  bool planAndExecute(const std::string &pipeline, const std::string &planner)
   {
     setPlanningPipeline(pipeline, planner);
-    arm_group_.setNamedTarget(target);
 
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     if (!static_cast<bool>(arm_group_.plan(plan)))
     {
-      RCLCPP_INFO(node_->get_logger(), "%s planning failed for target '%s'",
-                  planner.c_str(), target.c_str());
+      RCLCPP_INFO(node_->get_logger(), "%s planning failed", planner.c_str());
       return false;
     }
 
-    RCLCPP_INFO(node_->get_logger(), "%s planning succeeded for target '%s'",
-                planner.c_str(), target.c_str());
+    RCLCPP_INFO(node_->get_logger(), "%s planning succeeded", planner.c_str());
 
     auto result = arm_group_.execute(plan);
     if (result == moveit::core::MoveItErrorCode::SUCCESS)
     {
-      RCLCPP_INFO(node_->get_logger(), "%s execution succeeded for target '%s'",
-                  planner.c_str(), target.c_str());
+      RCLCPP_INFO(node_->get_logger(), "%s execution succeeded", planner.c_str());
       return true;
     }
 
-    RCLCPP_WARN(node_->get_logger(), "%s execution failed (code %d) for target '%s'",
-                planner.c_str(), result.val, target.c_str());
+    RCLCPP_WARN(node_->get_logger(), "%s execution failed (code %d)", planner.c_str(), result.val);
     return false;
   }
 
   /**
-   * @brief Move to a target position: try STOMP first, fall back to OMPL
-   * @param target Named target position
-   * @return true if movement successful, false otherwise
+   * @brief Attempt motion with STOMP first, fallback to OMPL
+   * @return true if either planner succeeded, false otherwise
    */
-  bool moveToPosition(const std::string &target)
+  bool moveWithFallback()
   {
-    RCLCPP_INFO(node_->get_logger(), "Moving to position: %s", target.c_str());
-
     // Try STOMP first
-    if (planAndExecute("stomp", "STOMP", target))
+    if (planAndExecute("stomp", "STOMP"))
     {
       return true;
     }
 
     // Fall back to OMPL
-    RCLCPP_WARN(node_->get_logger(), "STOMP failed for '%s', falling back to OMPL", target.c_str());
-    return planAndExecute("ompl", "RRTConnectkConfigDefault", target);
+    RCLCPP_WARN(node_->get_logger(), "STOMP failed, falling back to OMPL");
+    return planAndExecute("ompl", "RRTConnectkConfigDefault");
+  }
+
+  /**
+   * @brief Move to a named target position: try STOMP first, fall back to OMPL
+   * @param target Named target position
+   * @return true if movement successful, false otherwise
+   */
+  bool moveToSetPosition(const std::string &target)
+  {
+    RCLCPP_INFO(node_->get_logger(), "Moving to position: %s", target.c_str());
+    arm_group_.setNamedTarget(target);
+    return moveWithFallback();
+  }
+
+  /**
+   * @brief Move to arbitrary joint positions: try STOMP first, fall back to OMPL
+   * @param joint_angles Vector of 6 joint angles in radians
+   * @return true if movement successful, false otherwise
+   */
+  bool moveToCustomPosition(const std::vector<double> &joint_angles)
+  {
+    if (joint_angles.size() != 6)
+    {
+      RCLCPP_ERROR(node_->get_logger(),
+                   "Invalid joint angles: expected 6 values, got %zu",
+                   joint_angles.size());
+      return false;
+    }
+
+    RCLCPP_INFO(node_->get_logger(),
+                "Moving to joint positions: [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]",
+                joint_angles[0], joint_angles[1], joint_angles[2],
+                joint_angles[3], joint_angles[4], joint_angles[5]);
+
+    arm_group_.setJointValueTarget(joint_names_, joint_angles);
+    return moveWithFallback();
   }
 
   /**
@@ -201,16 +245,27 @@ private:
 
     RCLCPP_INFO(node_->get_logger(), "Starting %s scan sequence", range.c_str());
 
-    if (!moveToPosition(start))
+    if (!moveToSetPosition(start))
     {
       RCLCPP_ERROR(node_->get_logger(), "Scan %s: failed to reach start position", range.c_str());
       return false;
     }
 
-    if (!moveToPosition(end))
+    if (!moveToSetPosition(end))
     {
       RCLCPP_ERROR(node_->get_logger(), "Scan %s: failed to reach end position", range.c_str());
       return false;
+    }
+
+    if (range == "promo")
+    {
+      if (!moveToSetPosition("scan_block_promo"))
+      {
+        RCLCPP_ERROR(node_->get_logger(), "Scan %s: failed to reach block promo position", range.c_str());
+        return false;
+      }
+      rclcpp::sleep_for(std::chrono::seconds(5)); // Hold position for 5 seconds
+
     }
 
     RCLCPP_INFO(node_->get_logger(), "Scan %s: sequence completed successfully", range.c_str());
@@ -220,7 +275,7 @@ private:
   bool scanBlock()
   {
     RCLCPP_INFO(node_->get_logger(), "Scanning final block position");
-    if (!moveToPosition("scan_block"))
+    if (!moveToSetPosition("scan_block"))
     {
       RCLCPP_ERROR(node_->get_logger(), "Failed to reach scan block position");
       return false;
@@ -230,10 +285,96 @@ private:
   }
 
   /**
-   * @brief Handle a ControllerSet request by mapping config values to motions
-   * @param config Requested controller configuration
-   * @return true if the requested action completed successfully, false otherwise
+   * @brief Pick up a block: open gripper, move to pre-pick, pick, close gripper
+   * @param vision If true, use vision-based picking (custom position), if false use predefined positions
+   * @return true if pick succeeded, false otherwise
    */
+  bool pickBlock(bool vision)
+  {
+    RCLCPP_INFO(node_->get_logger(), "Starting pick block sequence (vision=%s)", vision ? "true" : "false");
+
+    // Open gripper
+    publishGripperCommand("open");
+    rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+    if (vision)
+    {
+      // Vision-based picking - use custom position (not yet implemented)
+      RCLCPP_WARN(node_->get_logger(), "Vision-based picking not yet implemented");
+      return false;
+    }
+    else
+    {
+      // Standard picking using predefined positions
+      // Move to pre-pick position
+      if (!moveToSetPosition("pre_pick"))
+      {
+        RCLCPP_ERROR(node_->get_logger(), "Pick: failed to reach pre-pick position");
+        return false;
+      }
+
+      rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+      // Move to pick position
+      if (!moveToSetPosition("pick"))
+      {
+        RCLCPP_ERROR(node_->get_logger(), "Pick: failed to reach pick position");
+        return false;
+      }
+
+      rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+      // Close gripper
+      publishGripperCommand("close");
+      rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+      // Move to home position
+      if (!moveToSetPosition("home"))
+      {
+        RCLCPP_ERROR(node_->get_logger(), "Pick: failed to reach home position");
+        return false;
+      }
+
+      rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+      RCLCPP_INFO(node_->get_logger(), "Pick block sequence completed successfully");
+      return true;
+    }
+  }
+
+  /**
+   * @brief Drop the block: move to full extension, open gripper, return to home
+   * @return true if drop succeeded, false otherwise
+   */
+  bool dropBlock()
+  {
+    RCLCPP_INFO(node_->get_logger(), "Starting drop block sequence");
+
+    // Move to full extension position
+    if (!moveToSetPosition("full_extension"))
+    {
+      RCLCPP_ERROR(node_->get_logger(), "Drop: failed to reach full extension position");
+      return false;
+    }
+
+    rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+    // Open gripper to release block
+    publishGripperCommand("open");
+    rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+    // Return to home position
+    if (!moveToSetPosition("home"))
+    {
+      RCLCPP_ERROR(node_->get_logger(), "Drop: failed to return to home position");
+      return false;
+    }
+
+    rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+    RCLCPP_INFO(node_->get_logger(), "Drop block sequence completed successfully");
+    return true;
+  }
   bool handleControllerSetRequest(int config)
   {
     RCLCPP_INFO(node_->get_logger(), "Received ControllerSet request: %d", config);
@@ -241,13 +382,21 @@ private:
     switch (config)
     {
     case 0:
-      return moveToPosition("home"); // Home position
+      return moveToSetPosition("home"); // Home position
     case 1:
       return scan("far"); // Rotate around to scan the distance
     case 2:
       return scan("near"); // Rotate around to scan close to the rover
     case 3:
-      return scanBlock(); // Hold position for to scan the block
+      return scan("promo"); // Adjusted scan positions for promo video
+    case 4:
+      return scanBlock(); // Hold position to scan the block
+    case 5:
+      return pickBlock(false); // Pick block with predefined positions
+    case 6:
+      return pickBlock(true); // Pick block with vision-based positioning
+    case 7:
+      return dropBlock(); // Drop block in drop zone
     default:
       RCLCPP_WARN(node_->get_logger(), "Unknown ControllerSet config: %d", config);
       return false;
@@ -293,6 +442,25 @@ private:
     current_joint_state_ = *msg;
   }
 
+  /**
+   * @brief Callback for target joint positions - receives custom position and executes movement
+   * @param msg JointState message with 6 joint position values
+   */
+  void targetJointPositionsCallback(const sensor_msgs::msg::JointState::SharedPtr msg)
+  {
+    if (!msg || msg->position.size() < 6)
+    {
+      RCLCPP_WARN(node_->get_logger(),
+                  "Invalid target joint positions: expected 6 values, got %zu",
+                  msg ? msg->position.size() : 0);
+      return;
+    }
+
+    // Extract the first 6 values as target joint angles
+    std::vector<double> target_angles(msg->position.begin(), msg->position.begin() + 6);
+    moveToCustomPosition(target_angles);
+  }
+
   // ============================================================================
   // STATE QUERY UTILITIES
   // ============================================================================
@@ -321,7 +489,7 @@ int main(int argc, char **argv)
 
   // Create a node with automatic parameter declaration
   auto const node = std::make_shared<rclcpp::Node>(
-      "pick_block_node",
+      "cobot_node",
       rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true));
 
   auto const logger = rclcpp::get_logger("cobot_node");
