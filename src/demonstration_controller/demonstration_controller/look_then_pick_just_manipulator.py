@@ -12,10 +12,6 @@ from controller_interfaces import DetectObjectsOn
 from controller_interfaces import DetectObjectsOff
 
 
-from geometry_msgs.msg import Twist
-
-
-
 class ControllerNode(Node):
     
     def __init__(self):
@@ -29,19 +25,6 @@ class ControllerNode(Node):
             topic='/omega_operator/task_space_pose',
             qos_profile=1,
             callback=self.task_space_pose_subscriber_callback)"""
-        
-
-        #################################
-        
-        self.publisher_ = self.create_publisher(Twist, '/cmd_vel', 10)
-        timer_period = 0.5  # seconds
-        self.controller_set_future=None
-        msg = Twist()
-        msg.angular.z = 10.0
-        self.publisher_.publish(msg)
-        self.get_logger().info(f'Publishing: x vel : {msg.linear.x}' )
-
-        #############
     
 
         #TF pose listener

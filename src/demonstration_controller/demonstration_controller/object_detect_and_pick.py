@@ -142,7 +142,7 @@ class ControllerNode(Node):
                 #manipulator close scan
                 
                 if self.manipulator_start == False and self.controller_set_future == None:
-                    self.controller_set_config(1,self.config_1_set)
+                    self.controller_set_config(2,self.config_1_set)
                     
 
                 #start object detection
@@ -214,9 +214,15 @@ class ControllerNode(Node):
     def config_1_set(self,future):
         response=future.result()
         if response.success==True:
-            self.manipulator_start=True
-            self.controller_set_future=None
-            self.current_case = 2
+            self.config_count+=1
+            if self.config_count<3:
+                self.controller_set_future=None
+                self.controller_set_config(2,self.config_1_set)
+            else:
+                self.manipulator_start=True
+                self.controller_set_future=None
+                self.current_case = 2
+                self.config_count=0
             
 
     def record_detected_object_position(self,msg:DetectedObjects):

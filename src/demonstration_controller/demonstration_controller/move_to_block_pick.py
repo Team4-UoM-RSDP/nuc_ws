@@ -10,6 +10,8 @@ from controller_interfaces import DetectedObjects
 from controller_interfaces import DetectObjectsOn
 from controller_interfaces import DetectObjectsOff
 
+from geometry_msgs.msg import Twist
+
 
 class ControllerNode(Node):
     
@@ -34,6 +36,10 @@ class ControllerNode(Node):
 
         ###################################################
         #Topic and Service initialisation
+
+        self.leo_velocity_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
+        
+        
 
         #initialise topic subscribers
         self.object_detection_subscriber = self.create_subscription(
@@ -86,6 +92,15 @@ class ControllerNode(Node):
         self.store_initial_object_list = False
 
         self.case_2_timer_create=False
+        self.back_n_spin_start=True
+        self.start_the_other_bit=False
+
+        self.config_count=0
+        self.back_n_spin_count=0
+        self.back_n_spin=None
+        self.detector=False
+
+
         
         #Object detection lists
         self.initial_object_list=[]
@@ -111,7 +126,7 @@ class ControllerNode(Node):
 
         
         #######################################
-        timer_period: float = 1/120
+        timer_period: float = 1/20
         self.timer = self.create_timer(timer_period, self.main_loop_callback)
     
 
@@ -142,7 +157,7 @@ class ControllerNode(Node):
                 #manipulator switches between far scan 0 and 1
                 
                 if self.manipulator_start == False and self.controller_set_future == None:
-                    self.controller_set_config(1,self.config_1_set)
+                    self.controller_set_config(4,self.config_4_set)
                     
 
                 #start object detection
@@ -174,6 +189,7 @@ class ControllerNode(Node):
                         current_block_position=self.initial_object_list.pop(0)
                     except:
                         self.current_case=1
+                        self.manipulator_start = False
                         return
                     request_object_pick = ControllerPositionSet.Request()
                     request_object_pick.x=current_block_position[0]
@@ -191,13 +207,163 @@ class ControllerNode(Node):
                 
                 
             case 4:
-                self.get_logger().info("Sequence complete.")
-                self.timer.cancel()
+                
+
+                if self.detector==False and self.dectect_objects_on_future == None:
+                    request_object_detection_on = DetectObjectsOn.Request()
+                    self.detector=True
+                    
+                    
+                    if self.dectect_objects_on_future is not None and not self.dectect_objects_on_future.done():
+                            self.dectect_objects_on_future.cancel()
+                            self.get_logger().warn('Object detection on cancelled is camera node still running? ')
+                            
+                            
+                    self.dectect_objects_on_future=self.object_detection_on.call_async(request_object_detection_on)
+                    self.dectect_objects_on_future.add_done_callback(self.after_object_detection_scanning)
+
+                if self.start_the_other_bit==True and self.controller_set_future == None:
+                    self.controller_set_config(1,self.config_1_set)
+                
+            
+            case 5:
+                if self.dectect_objects_off_future == None:
+                    request_object_detection_off = DetectObjectsOff.Request()
+                            
+                    if self.dectect_objects_off_future is not None and not self.dectect_objects_off_future.done():
+                        self.dectect_objects_off_future.cancel()
+                        self.get_logger().warn('Object detection off cancelled is camera node still running? ')
+                                    
+                                    
+                    self.dectect_objects_off_future=self.object_detection_off.call_async(request_object_detection_off)
+                    self.dectect_objects_off_future.add_done_callback(self.after_object_detection_scanning_off)
+                self.current_case=99
+                    
+            case 6:
+                if self.back_n_spin == None:
+                    
+                    try:
+                        current_block_target=self.initial_object_list.pop(0)
+                        self.back_n_spin_count = 0
+                    except:
+                        self.current_case=4
+                        self.back_n_spin = None
+                        self.back_n_spin_start = True
+                        
+                        return
+                    self.back_n_spin=1
+                    current_block_target[0]=current_block_target[0]-0.0305
+                    current_block_target[1]=current_block_target[1]
+                    angle=np.arctan2(current_block_target[1],current_block_target[0])
+                    self.angle_in_4_seconds=angle/4
+                    distance=np.sqrt(current_block_target[0]**2+current_block_target[1]**2)-0.218
+                    self.distance_in_4_seconds=distance/4
+
+                    if self.back_n_spin_start==True:
+                        timer_period_back_n_spin: float = 1/50
+                        self.back_n_spin_start = False
+                        
+                        self.timer_for_back_n_spin = self.create_timer(timer_period_back_n_spin, self.back_n_spin_callback)
+                        self.current_case=99
+
+            case 99:
+                pass
+                    
+
                 
 
 
     #####################################################################################################################################
     #keep these
+
+    def back_n_spin_callback(self):
+        
+        if self.back_n_spin_count <= 200:
+            spin=Twist()
+            spin.angular.z = self.angle_in_4_seconds
+            self.leo_velocity_publisher.publish(spin)
+
+        elif self.back_n_spin_count <= 400:
+            going_forward=Twist()
+            going_forward.angular.z = 0
+            going_forward.linear.x = self.distance_in_4_seconds
+            self.leo_velocity_publisher.publish(going_forward)
+        else:
+            going_forward=Twist()
+            going_forward.angular.z = 0
+            going_forward.linear.x = 0
+            self.leo_velocity_publisher.publish(going_forward)
+            if self.distance_in_4_seconds*4>2:
+                self.current_case=4
+                self.back_n_spin_start=True
+                self.back_n_spin_count = 0
+                self.timer_for_back_n_spin.cancel()
+                self.back_n_spin=None
+                self.initial_object_list=[]
+            else:
+                self.current_case=1
+                self.back_n_spin_start=True
+                self.back_n_spin_count = 0
+                self.timer_for_back_n_spin.cancel()
+                self.back_n_spin=None
+                self.initial_object_list=[]
+
+
+        
+
+        self.back_n_spin_count+=1
+
+    def after_object_detection_scanning_off(self,future):
+        response = future.result()
+        if response.success == True:
+            results=self.clustering(0.1,self.initial_object_list)
+            if results==None:
+                self.current_case=4
+                self.initial_object_list=[]
+                self.get_logger().warn('clustering failed')
+            else:
+
+                self.initial_object_list=[]
+                for item in results:
+                    self.initial_object_list.append(item['position'])
+
+                
+                self.current_case = 6
+                self.case_2_timer_create=False
+                self.dectect_objects_off_future = None
+                self.detector = False
+        if response.success==False:
+            self.get_logger().info('object detection off failed')
+            self.dectect_objects_off_future = None
+            self.current_case=5
+
+    def after_object_detection_scanning(self,future):
+        response=future.result()
+        if response.success==True:
+            self.get_logger().info('object detection on')
+            self.start_the_other_bit=True
+            self.dectect_objects_on_future = None
+        if response.success==False:
+            self.dectect_objects_on_future=None
+            self.detector=False
+
+
+    def config_1_set(self,future):
+        response=future.result()
+        if response.success==True:
+
+            self.detector=False
+            self.config_count+=1
+            if self.config_count<3:
+                self.controller_set_future=None
+                self.controller_set_config(2,self.config_1_set)
+            else:
+                
+                self.controller_set_future=None
+                self.current_case = 5
+                self.start_the_other_bit=False
+                self.config_count=0
+                self.detector=False
 
     def controller_set_config(self,config:int,callback):
         request_manipulator_config = ControllerSet.Request()
@@ -211,7 +377,7 @@ class ControllerNode(Node):
         self.controller_set_future=self.service_client_controller_set.call_async(request_manipulator_config)
         self.controller_set_future.add_done_callback(callback)
     
-    def config_1_set(self,future):
+    def config_4_set(self,future):
         response=future.result()
         if response.success==True:
             self.manipulator_start=True
@@ -234,6 +400,8 @@ class ControllerNode(Node):
             #reset logic variables
             self.manipulator_start=False
             self.dectect_objects_on_future = None
+            
+            
 
     def object_detection_timer_callback(self):
         self.store_initial_object_list = False
@@ -252,16 +420,22 @@ class ControllerNode(Node):
     def after_object_detection_off(self,future):
         response = future.result()
         if response.success == True:
+            self.object_detection_timer.cancel()
             results=self.clustering(0.1,self.initial_object_list)
+            if results==None:
+                self.current_case=1
+                self.get_logger().warn('clustering failed ')
+            else:
 
-            self.initial_object_list=[]
-            for item in results:
-                self.initial_object_list.append(item['position'])
 
-            
-            self.current_case = 3
-            self.case_2_timer_create=False
-            self.dectect_objects_off_future = None
+                self.initial_object_list=[]
+                for item in results:
+                    self.initial_object_list.append(item['position'])
+
+                
+                self.current_case = 3
+                self.case_2_timer_create=False
+                self.dectect_objects_off_future = None
     
     def after_controller_position_set(self,future):
         response=future.result()
@@ -274,23 +448,26 @@ class ControllerNode(Node):
 
     def clustering(self,eps,list,min_samples=1):
         list=np.array(list)
-        db = DBSCAN(eps=eps, min_samples=min_samples).fit(list)
-        labels = db.labels_
+        try:
+            db = DBSCAN(eps=eps, min_samples=min_samples).fit(list)
+            labels = db.labels_
 
-            # Create a list of dictionaries containing cluster center and no points in cluster
-        results = []
-        for label in set(labels):
-            mask = (labels == label)
-            cluster_points = list[mask]
-            
-            results.append({
-                    'position': cluster_points.mean(axis=0),
-                    'count': len(cluster_points),
-                    
-                })
+                # Create a list of dictionaries containing cluster center and no points in cluster
+            results = []
+            for label in set(labels):
+                mask = (labels == label)
+                cluster_points = list[mask]
+                
+                results.append({
+                        'position': cluster_points.mean(axis=0),
+                        'count': len(cluster_points),
+                        
+                    })
 
-        # Sort the entire list by count (highest density first)
-        results.sort(key=lambda x: x['count'], reverse=True)
+            # Sort the entire list by count (highest density first)
+            results.sort(key=lambda x: x['count'], reverse=True)
+        except:
+            results=None
         return results
 
     

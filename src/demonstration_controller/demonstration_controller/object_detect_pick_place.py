@@ -98,6 +98,8 @@ class ControllerNode(Node):
 
         self.back_n_spin_count=0
         self.back_n_spin_start=True
+
+        self.config_count=0
         
         #Object detection lists
         self.initial_object_list=[]
@@ -154,7 +156,7 @@ class ControllerNode(Node):
                 #manipulator switches between far scan 0 and 1
                 
                 if self.manipulator_start == False and self.controller_set_future == None:
-                    self.controller_set_config(1,self.config_1_set)
+                    self.controller_set_config(2,self.config_1_set)
                 
                 
 
@@ -213,7 +215,7 @@ class ControllerNode(Node):
 
             case 5:
                 if self.manipulator_start == False and self.controller_set_future == None:
-                    self.controller_set_config(4,self.place_object_callback)#set to the place config
+                    self.controller_set_config(7,self.place_object_callback)#set to the place config
 
             case 6: 
                 self.get_logger().info("Sequence complete.")
@@ -272,9 +274,15 @@ class ControllerNode(Node):
     def config_1_set(self,future):
         response=future.result()
         if response.success==True:
-            self.manipulator_start=True
-            self.controller_set_future=None
-            self.current_case = 2
+            self.config_count+=1
+            if self.config_count<3:
+                self.controller_set_future=None
+                self.controller_set_config(2,self.config_1_set)
+            else:
+                self.manipulator_start=True
+                self.controller_set_future=None
+                self.current_case = 2
+                self.config_count=0
             
 
     def record_detected_object_position(self,msg:DetectedObjects):
