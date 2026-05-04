@@ -10,6 +10,8 @@ from controller_interfaces import DetectedObjects
 from controller_interfaces import DetectObjectsOn
 from controller_interfaces import DetectObjectsOff
 
+from geometry_msgs.msg import Twist
+
 
 class ControllerNode(Node):
     
@@ -41,6 +43,13 @@ class ControllerNode(Node):
             topic='/detected_objects',
             callback=self.record_detected_object_position,
             qos_profile=1)
+        
+        self.leo_velocity_publisher = self.create_publisher(
+            msg_type = Twist,
+            topic = '/cmd_vel',
+            qos_profile = 1,
+
+        )
         
         
         
@@ -86,6 +95,9 @@ class ControllerNode(Node):
         self.store_initial_object_list = False
 
         self.case_2_timer_create=False
+
+        self.back_n_spin_count=0
+        self.back_n_spin_start=True
         
         #Object detection lists
         self.initial_object_list=[]
@@ -142,16 +154,9 @@ class ControllerNode(Node):
                 #manipulator switches between far scan 0 and 1
                 
                 if self.manipulator_start == False and self.controller_set_future == None:
-                    request_manipulator_config_1 = ControllerSet.Request()
-                    request_manipulator_config_1.config = 1 #Set this to the correct one that does a near stationary scan
-                    
-                    if self.controller_set_future is not None and not self.controller_set_future.done():
-                        self.controller_set_future.cancel()
-                        self.get_logger().warn('Config 1 cancelled is controller node still running? ')
-                        
-                        
-                    self.controller_set_future=self.service_client_controller_set.call_async(request_manipulator_config_1)
-                    self.controller_set_future.add_done_callback(self.config_1_set)
+                    self.controller_set_config(1,self.config_1_set)
+                
+                
 
 
                 #start object detection
@@ -200,19 +205,76 @@ class ControllerNode(Node):
                 
                 
             case 4:
+                    if self.back_n_spin_start==True:
+                        timer_period_back_n_spin: float = 1/50
+                        self.back_n_spin_start = False
+                        
+                        self.timer_for_back_n_spin = self.create_timer(timer_period_back_n_spin, self.back_n_spin_callback)
+
+            case 5:
+                if self.manipulator_start == False and self.controller_set_future == None:
+                    self.controller_set_config(4,self.place_object_callback)#set to the place config
+
+            case 6: 
                 self.get_logger().info("Sequence complete.")
                 self.timer.cancel()
+
+
+                    
                 
 
 
     #####################################################################################################################################
     #keep these
-    
+
+    def place_object_config(self,future):
+        response = future.result()
+        if response.success == True:
+            self.manipulator_start=True
+            self.controller_set_future=None
+            self.current_case = 6
+
+
+    def back_n_spin_callback(self):
+        
+        if self.back_n_spin_count <= 100:
+            going_back=Twist()
+            going_back.linear.x = -0.1
+            self.leo_velocity_publisher.publish()
+
+        elif self.back_n_spin_count <= 300:
+            going_back=Twist()
+            going_back.angular.z = 0.25
+            self.leo_velocity_publisher.publish()
+
+        elif self.back_n_spin_count <= 400:
+            going_back=Twist()
+            going_back.linear.x = 0.1
+            self.leo_velocity_publisher.publish()
+            self.current_case = 5
+            self.back_n_spin_start = True
+
+        self.back_n_spin_count+=1
+
+
+    def controller_set_config(self,config:int,callback):
+        request_manipulator_config = ControllerSet.Request()
+        request_manipulator_config.config = config 
+                    
+        if self.controller_set_future is not None and not self.controller_set_future.done():
+            self.controller_set_future.cancel()
+            self.get_logger().warn(f'Config {config} cancelled is controller node still running? ')
+                        
+                        
+        self.controller_set_future=self.service_client_controller_set.call_async(request_manipulator_config)
+        self.controller_set_future.add_done_callback(callback)
+                
     def config_1_set(self,future):
         response=future.result()
         if response.success==True:
             self.manipulator_start=True
             self.controller_set_future=None
+            self.current_case = 2
             
 
     def record_detected_object_position(self,msg:DetectedObjects):

@@ -134,12 +134,12 @@ class ControllerNode(Node):
 
                         self.get_logger().error(
                             f'Could not get transform from `{self.parent_name}` to `{self.child_name}`: {e}')
-                self.current_case=1
+                self.current_case=4
 
-
+            #case 1-3 look near stationary, detect,pick
             case 1:
                 
-                #manipulator close scan
+                #manipulator switches between far scan 0 and 1
                 
                 if self.manipulator_start == False and self.controller_set_future == None:
                     self.controller_set_config(1,self.config_1_set)
@@ -191,8 +191,8 @@ class ControllerNode(Node):
                 
                 
             case 4:
-                if self.controller_set_future == None:
-                    self.controller_set_config()
+                self.get_logger().info("Sequence complete.")
+                self.timer.cancel()
                 
 
 

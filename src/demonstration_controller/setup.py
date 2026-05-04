@@ -24,8 +24,12 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'object_detect_and_pick.py = demonstration_controller.object_detect_and_pick.py:main',
-            'object_detect_pick_place.py = demonstration_controller.object_detect_pick_place.py:main'
+            'object_detect_and_pick = demonstration_controller.object_detect_and_pick:main',
+            'look_then_pick_just_manipulator = demonstration_controller.look_then_pick_just_manipulator:main',
+            'move_to_block_pick = demonstration_controller.move_to_block_pick:main',
+            'object_detect_pick_place = demonstration_controller.object_detect_pick_place:main',
+            'demo_takeover = demonstration_controller.demo_takeover:main',
+
         ],
     },
 )

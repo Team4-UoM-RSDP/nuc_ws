@@ -3,12 +3,17 @@ from rclpy.node import Node
 import tf2_ros
 import numpy as np
 from sklearn.cluster import DBSCAN
+import time
 
 from controller_interfaces import ControllerSet
 from controller_interfaces import ControllerPositionSet
 from controller_interfaces import DetectedObjects
 from controller_interfaces import DetectObjectsOn
 from controller_interfaces import DetectObjectsOff
+
+
+from geometry_msgs.msg import Twist
+
 
 
 class ControllerNode(Node):
@@ -24,6 +29,19 @@ class ControllerNode(Node):
             topic='/omega_operator/task_space_pose',
             qos_profile=1,
             callback=self.task_space_pose_subscriber_callback)"""
+        
+
+        #################################
+        
+        self.publisher_ = self.create_publisher(Twist, '/cmd_vel', 10)
+        timer_period = 0.5  # seconds
+        self.controller_set_future=None
+        msg = Twist()
+        msg.angular.z = 10.0
+        self.publisher_.publish(msg)
+        self.get_logger().info(f'Publishing: x vel : {msg.linear.x}' )
+
+        #############
     
 
         #TF pose listener
@@ -86,6 +104,7 @@ class ControllerNode(Node):
         self.store_initial_object_list = False
 
         self.case_2_timer_create=False
+        self.config_looper=0
         
         #Object detection lists
         self.initial_object_list=[]
@@ -142,48 +161,22 @@ class ControllerNode(Node):
                 #manipulator switches between far scan 0 and 1
                 
                 if self.controller_set_future == None:
-                    request_manipulator_config_1 = ControllerSet.Request()
-                    request_manipulator_config_1.config = 1 #Set this to the correct one that does aflip flopping near
+                    self.controller_set_config(2,self.config_1_set)
                     
-                    if self.controller_set_future is not None and not self.controller_set_future.done():
-                        self.controller_set_future.cancel()
-                        self.get_logger().warn('Config 1 cancelled is controller node still running? ')
-                        
-                        
-                    self.controller_set_future=self.service_client_controller_set.call_async(request_manipulator_config_1)
-                    self.controller_set_future.add_done_callback(self.config_1_set)
 
 
             
             case 2:
                 #object detection storing returns 
                 if self.controller_set_future == None:
-                    request_manipulator_config_2 = ControllerSet.Request()
-                    request_manipulator_config_2.config = 2 #Set this to the correct one that does a near stationary scan
-                    
-                    if self.controller_set_future is not None and not self.controller_set_future.done():
-                        self.controller_set_future.cancel()
-                        self.get_logger().warn('Config 1 cancelled is controller node still running? ')
-                        
-                        
-                    self.controller_set_future=self.service_client_controller_set.call_async(request_manipulator_config_2)
-                    self.controller_set_future.add_done_callback(self.config_2_set)
+                    self.controller_set_config(3,self.config_2_set)
                     
                     
             case 3:
                 #uses grasp block at given position
                 if self.controller_set_future == None:
-                    request_manipulator_config_3 = ControllerSet.Request()
-                    request_manipulator_config_3.config = 3 #Set this to the correct one that does a near stationary scan
+                    self.controller_set_config(5,self.config_3_set)
                     
-                    if self.controller_set_future is not None and not self.controller_set_future.done():
-                        self.controller_set_future.cancel()
-                        self.get_logger().warn('Config 1 cancelled is controller node still running? ')
-                        
-                        
-                    self.controller_set_future=self.service_client_controller_set.call_async(request_manipulator_config_3)
-                    self.controller_set_future.add_done_callback(self.config_3_set)
-
                 
                 
             case 4:
@@ -194,11 +187,23 @@ class ControllerNode(Node):
 
     #####################################################################################################################################
     #keep these
+
+    def controller_set_config(self,config:int,callback):
+        request_manipulator_config = ControllerSet.Request()
+        request_manipulator_config.config = config 
+                    
+        if self.controller_set_future is not None and not self.controller_set_future.done():
+            self.controller_set_future.cancel()
+            self.get_logger().warn(f'Config {config} cancelled is controller node still running? ')
+                        
+                        
+        self.controller_set_future=self.service_client_controller_set.call_async(request_manipulator_config)
+        self.controller_set_future.add_done_callback(callback)
     
     def config_1_set(self,future):
         response=future.result()
         if response.success==True:
-            timer_period: float = 5
+            timer_period: float = 1/100
             self.timer_config_1 = self.create_timer(timer_period, self.timer_config_1_callback)#
         else:
             self.controller_set_future=None
@@ -207,15 +212,24 @@ class ControllerNode(Node):
 
     
     def timer_config_1_callback(self):
-        self.current_case=2
-        self.controller_set_future=None
-        self.timer_config_1.cancel()
+        if self.config_looper<3:
+            self.config_looper+=1
+            self.current_case=1
+            self.controller_set_future=None
+            self.timer_config_1.cancel()
+        
+        else:
+            time.sleep(2)
+            self.config_looper=0
+            self.current_case=2
+            self.controller_set_future=None
+            self.timer_config_1.cancel()
     
 
     def config_2_set(self,future):
         response=future.result()
         if response.success==True:
-            timer_period: float = 5
+            timer_period: float = 15
             self.timer_config_2 = self.create_timer(timer_period, self.timer_config_2_callback)#
         else:
             self.controller_set_future=None

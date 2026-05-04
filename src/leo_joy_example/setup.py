@@ -25,6 +25,14 @@ setup(
   entry_points={
     'console_scripts': ["manager_node = ""leo_joy_example.manager_node:main",
                         'object_detect_and_pick = demonstration_controller.object_detect_and_pick:main',
+                        'look_then_pick_just_manipulator = demonstration_controller.look_then_pick_just_manipulator:main',
+                        'move_to_block_pick = demonstration_controller.move_to_block_pick:main',
+                        'object_detect_pick_place = demonstration_controller.object_detect_pick_place:main',
+                        'demo_takeover = demonstration_controller.demo_takeover:main',
+                        'demo_drop = demo_scripts.demo_drop:main',
+                        'demo_pick_vision = demo_scripts.demo_pick_vision:main',
+                        'demo_pick = demo_scripts.demo_pick:main',
+                        'demo_scan = demo_scripts.demo_scan:main',
     ],
   },
 )
