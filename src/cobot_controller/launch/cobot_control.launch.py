@@ -34,11 +34,31 @@ def launch_setup(context, *args, **kwargs):
         .joint_limits(file_path=joint_limits_file_path)
         .robot_description_kinematics(file_path=kinematics_file_path)
         .planning_pipelines(pipelines=["stomp", "ompl"])
+        # .planning_scene_monitor(
+        #    publish_robot_description=False,
+        #    publish_robot_description_semantic=True,
+        #    publish_planning_scene=True,
+        # )
         .to_moveit_configs()
     )
 
     # Get the robot description to pass to pick_block
     moveit_config_dict = moveit_config.to_dict()
+
+    # Robot state publisher - publishes tf transforms from joint states
+    robot_state_publisher_node = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher",
+        output="screen",
+        parameters=[
+            moveit_config_dict,
+            {"use_sim_time": False},
+        ],
+        remappings=[
+            ("joint_states", "/joint_states"),
+        ],
+    )
 
     # Move group node for MoveIt2 planning and execution
     move_group_node = Node(
@@ -82,8 +102,13 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
-    # Return nodes - move_group, cobot controller, and rviz
-    return [move_group_node, cobot_node, rviz_node]
+    # Return nodes
+    return [
+        robot_state_publisher_node,
+        move_group_node,
+        cobot_node,
+        rviz_node,
+    ]
 
 
 def generate_launch_description():
