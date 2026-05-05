@@ -40,8 +40,8 @@ class ObjectDetectionPublisher(Node):
 
         self.transform_listener_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.transform_listener_buffer, self)
-        self.parent_name="camera"#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        self.child_name="/base_link"
+        self.parent_name="/base_link"#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        self.child_name="/camera_color_frame"
 
         self.color_pub = self.create_publisher(
             String,
@@ -255,7 +255,7 @@ class ObjectDetectionPublisher(Node):
             if depth is None or depth <= 0:
                 continue
             try:
-                        tfs =   self.transform_listener_buffer.lookup_transform(
+                        self.tfs =   self.transform_listener_buffer.lookup_transform(
                                 self.parent_name,
                                 self.child_name,
                                 rclpy.time.Time())
@@ -338,12 +338,13 @@ class ObjectDetectionPublisher(Node):
             [float(refined_center_x), float(refined_center_y)],
             float(refined_depth),
         )
-
+        R, translate=get_rotation_translation_matrix(self.tfs)
+        Transformed=R@(np.array([X,Y,Z]).T)+(translate.T)
         self.publish_detection(
             pred_color,
-            X-tfs.transform.translation.x,
-            Y-tfs.transform.translation.x,
-            Z-tfs.transform.translation.x,
+            Transformed[0],
+            Transformed[1],
+            Transformed[2],
             side_m=side_m,
         )
 
@@ -442,6 +443,49 @@ class ObjectDetectionPublisher(Node):
     def destroy_node(self):
         self.shutdown_camera()
         super().destroy_node()
+
+def get_rotation_translation_matrix(tfs):
+    x = tfs.transform.translation.x
+    y = tfs.transform.translation.y
+    z = tfs.transform.translation.z
+
+    # 3. Pull out Rotation (Quaternion)
+    qx = tfs.transform.rotation.x
+    qy = tfs.transform.rotation.y
+    qz = tfs.transform.rotation.z
+    qw = tfs.transform.rotation.w
+
+    sinr_cosp = 2 * (qw * qx + qy * qz)
+    cosr_cosp = 1 - 2 * (qx * qx + qy * qy)
+    r = math.atan2(sinr_cosp, cosr_cosp)
+    # Pitch (y-axis rotation)
+    sinp = 2 * (qw * qy - qz * qx)
+    if abs(sinp) >= 1:
+        p = math.copysign(math.pi / 2, sinp) # use 90 degrees if out of range
+    else:
+        p = math.asin(sinp)
+
+    # Yaw (z-axis rotation)
+    siny_cosp = 2 * (qw * qz + qx * qy)
+    cosy_cosp = 1 - 2 * (qy * qy + qz * qz)
+    y = math.atan2(siny_cosp, cosy_cosp)
+    
+    # Pre-calculate sines and cosines
+    cx = np.cos(r)
+    sx = np.sin(r)
+    cy = np.cos(p)
+    sy = np.sin(p)
+    cz = np.cos(y)
+    sz = np.sin(y)
+
+    # Combined matrix expansion
+    R = np.array([
+        [cz*cy, cz*sy*sx - sz*cx, cz*sy*cx + sz*sx],
+        [sz*cy, sz*sy*sx + cz*cx, sz*sy*cx - cz*sx],
+        [-sy,   cy*sx,            cy*cx           ]
+    ])
+
+    return R, [x,y,z]
 
 
 def median_depth_m(depth_image, x, y, depth_scale, radius=4):
