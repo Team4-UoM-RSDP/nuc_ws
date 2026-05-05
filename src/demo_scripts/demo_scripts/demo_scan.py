@@ -1,20 +1,21 @@
 
-import rclpy
-from rclpy.node import Node
-import tf2_ros
 import numpy as np
-from sklearn.cluster import DBSCAN
-from rclpy.task import Future
-from rclpy.node import Node
-from rclpy.logging import get_logger
-
-from controller_interfaces import ControllerSet
-from controller_interfaces import ControllerPositionSet
-from controller_interfaces import DetectedObjects
-from controller_interfaces import DetectObjectsOn
-from controller_interfaces import DetectObjectsOff
-
+import rclpy
+import tf2_ros
 from geometry_msgs.msg import Twist
+from rclpy.logging import get_logger
+from rclpy.node import Node
+from rclpy.task import Future
+from sklearn.cluster import DBSCAN
+
+from controller_interfaces.msg import DetectedObjects
+from controller_interfaces.srv import (
+    ControllerPositionSet,
+    ControllerSet,
+    DetectObjectsOff,
+    DetectObjectsOn,
+)
+
 _logger = get_logger(__name__)
 
 
