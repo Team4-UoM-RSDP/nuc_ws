@@ -142,7 +142,7 @@ class ControllerNode(Node):
             case 1:
                 
                 #manipulator switches between far scan 0 and 1
-                
+                self.current_case=99
                 if self.controller_set_future == None:
                     self.controller_set_config(2,self.config_1_set)
                     
@@ -151,12 +151,14 @@ class ControllerNode(Node):
             
             case 2:
                 #object detection storing returns 
+                self.current_case=99
                 if self.controller_set_future == None:
                     self.controller_set_config(3,self.config_2_set)
                     
                     
             case 3:
                 #uses grasp block at given position
+                self.current_case=99
                 if self.controller_set_future == None:
                     self.controller_set_config(5,self.config_3_set)
                     
@@ -165,6 +167,9 @@ class ControllerNode(Node):
             case 4:
                 self.get_logger().info("Sequence complete.")
                 self.timer.cancel()
+
+            case 99:
+                pass
                 
 
 
@@ -190,6 +195,7 @@ class ControllerNode(Node):
             self.timer_config_1 = self.create_timer(timer_period, self.timer_config_1_callback)#
         else:
             self.controller_set_future=None
+            self.current_case=1
             self.get_logger().info("config 1 set failed")
 
 
@@ -202,7 +208,7 @@ class ControllerNode(Node):
             self.timer_config_1.cancel()
         
         else:
-            time.sleep(2)
+            
             self.config_looper=0
             self.current_case=2
             self.controller_set_future=None
@@ -216,6 +222,7 @@ class ControllerNode(Node):
             self.timer_config_2 = self.create_timer(timer_period, self.timer_config_2_callback)#
         else:
             self.controller_set_future=None
+            self.current_case=2
             self.get_logger().info("config 2 set failed")
 
 
@@ -233,6 +240,7 @@ class ControllerNode(Node):
             
         else:
             self.controller_set_future=None
+            self.current_case=3
             self.get_logger().info("config 3 set failed")
 
 
