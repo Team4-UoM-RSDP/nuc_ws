@@ -55,16 +55,19 @@ private:
   // ============================================================================
   sensor_msgs::msg::JointState current_joint_state_;
   mutable std::mutex joint_state_mutex_;
+  // Latest block pose received via /controller_position_set (vision pick)
+  geometry_msgs::msg::Pose last_block_pose_;
+  bool has_block_pose_ = false;
+  mutable std::mutex block_pose_mutex_;
 
-  // Joint names for the arm 
+  // Joint names for the arm
   const std::vector<std::string> joint_names_ = {
       "link1_to_link2",
       "link2_to_link3",
       "link3_to_link4",
       "link4_to_link5",
       "link5_to_link6",
-      "link6_to_link6_flange"
-  };
+      "link6_to_link6_flange"};
 
   // ============================================================================
   // INITIALIZATION HELPERS
@@ -243,6 +246,19 @@ private:
   }
 
   /**
+   * @brief Move to a Cartesian pose using the current planner pipeline
+   * @param pose Target end-effector pose
+   * @return true if movement succeeded, false otherwise
+   */
+  bool moveToPose(const geometry_msgs::msg::Pose &pose)
+  {
+    RCLCPP_INFO(node_->get_logger(), "Moving to pose: x=%.3f y=%.3f z=%.3f",
+                pose.position.x, pose.position.y, pose.position.z);
+    arm_group_.setPoseTarget(pose);
+    return moveWithFallback();
+  }
+
+  /**
    * @brief Execute a scan sequence: move to scan_range_0 then scan_range_1
    * @param range Either "far" or "near"
    * @return true if both moves succeed, false otherwise
@@ -274,7 +290,6 @@ private:
         return false;
       }
       rclcpp::sleep_for(std::chrono::seconds(5)); // Hold position for 5 seconds
-
     }
 
     RCLCPP_INFO(node_->get_logger(), "Scan %s: sequence completed successfully", range.c_str());
@@ -305,26 +320,53 @@ private:
     // Open gripper
     publishGripperCommand("open");
     rclcpp::sleep_for(std::chrono::milliseconds(500));
+    // Move to pre-pick joint configuration first (common for both modes)
+    if (!moveToSetPosition("pre_pick"))
+    {
+      RCLCPP_ERROR(node_->get_logger(), "Pick: failed to reach pre-pick position");
+      return false;
+    }
+
+    rclcpp::sleep_for(std::chrono::milliseconds(500));
 
     if (vision)
     {
-      // Vision-based picking - use custom position (not yet implemented)
-      RCLCPP_WARN(node_->get_logger(), "Vision-based picking not yet implemented");
-      return false;
-    }
-    else
-    {
-      // Standard picking using predefined positions
-      // Move to pre-pick position
-      if (!moveToSetPosition("pre_pick"))
+      // Vision-based: plan Cartesian approach above block then descend
+      geometry_msgs::msg::Pose target;
       {
-        RCLCPP_ERROR(node_->get_logger(), "Pick: failed to reach pre-pick position");
+        std::lock_guard<std::mutex> lock(block_pose_mutex_);
+        if (!has_block_pose_)
+        {
+          RCLCPP_WARN(node_->get_logger(), "Vision pick requested but no block pose available; call /controller_position_set first");
+          return false;
+        }
+        target = last_block_pose_;
+      }
+
+      geometry_msgs::msg::Pose above = target;
+      above.position.z += 0.10; // 10 cm above
+
+      // Move to above the block
+      if (!moveToPose(above))
+      {
+        RCLCPP_ERROR(node_->get_logger(), "Vision Pick: failed to reach above-block pose");
         return false;
       }
 
       rclcpp::sleep_for(std::chrono::milliseconds(500));
 
-      // Move to pick position
+      // Move down to the block
+      if (!moveToPose(target))
+      {
+        RCLCPP_ERROR(node_->get_logger(), "Vision Pick: failed to reach block pose");
+        return false;
+      }
+
+      rclcpp::sleep_for(std::chrono::milliseconds(500));
+    }
+    else
+    {
+      // No vision, move to predefined pick poition
       if (!moveToSetPosition("pick"))
       {
         RCLCPP_ERROR(node_->get_logger(), "Pick: failed to reach pick position");
@@ -332,23 +374,27 @@ private:
       }
 
       rclcpp::sleep_for(std::chrono::milliseconds(500));
-
-      // Close gripper
-      publishGripperCommand("close");
-      rclcpp::sleep_for(std::chrono::milliseconds(500));
-
-      // Move to home position
-      if (!moveToSetPosition("home"))
-      {
-        RCLCPP_ERROR(node_->get_logger(), "Pick: failed to reach home position");
-        return false;
-      }
-
-      rclcpp::sleep_for(std::chrono::milliseconds(500));
-
-      RCLCPP_INFO(node_->get_logger(), "Pick block sequence completed successfully");
-      return true;
     }
+
+    // Close gripper
+    publishGripperCommand("close");
+    rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+    // Retreat back to pre-pick joint configuration
+    if (!moveToSetPosition("pre_pick"))
+    {
+      RCLCPP_WARN(node_->get_logger(), "Pick: failed to retreat to pre-pick position");
+    }
+
+    // Return to home
+    if (!moveToSetPosition("home"))
+    {
+      RCLCPP_WARN(node_->get_logger(), "Pick: failed to reach home position");
+    }
+
+    rclcpp::sleep_for(std::chrono::milliseconds(500));
+    RCLCPP_INFO(node_->get_logger(), "Pick block sequence completed successfully");
+    return true;
   }
 
   /**
@@ -416,8 +462,21 @@ private:
   bool handleControllerPositionSetRequest(double x, double y, double z)
   {
     RCLCPP_INFO(node_->get_logger(), "Received ControllerPositionSet request: x=%.3f, y=%.3f, z=%.3f", x, y, z);
-    RCLCPP_WARN(node_->get_logger(), "ControllerPositionSet handling not yet implemented");
-    return false;
+    {
+      std::lock_guard<std::mutex> lock(block_pose_mutex_);
+      last_block_pose_.position.x = x;
+      last_block_pose_.position.y = y;
+      last_block_pose_.position.z = z;
+      // Default orientation: no rotation (w=1)
+      last_block_pose_.orientation.x = 0.0;
+      last_block_pose_.orientation.y = 0.0;
+      last_block_pose_.orientation.z = 0.0;
+      last_block_pose_.orientation.w = 1.0;
+      has_block_pose_ = true;
+    }
+
+    RCLCPP_INFO(node_->get_logger(), "Stored block pose for vision pick");
+    return true;
   }
 
   // ============================================================================
@@ -430,17 +489,22 @@ private:
    */
   void publishGripperCommand(const std::string &command)
   {
-    if (command == "open") {
+    if (command == "open")
+    {
       auto msg = std_msgs::msg::Int8();
       msg.data = 100;
       gripper_pub_->publish(msg);
       RCLCPP_INFO(node_->get_logger(), "Gripper command: %s", command.c_str());
-    } else if (command == "close") {
+    }
+    else if (command == "close")
+    {
       auto msg = std_msgs::msg::Int8();
       msg.data = 0;
       gripper_pub_->publish(msg);
       RCLCPP_INFO(node_->get_logger(), "Gripper command: %s", command.c_str());
-    } else {
+    }
+    else
+    {
       RCLCPP_WARN(node_->get_logger(), "Unknown gripper command '%s'; not publishing", command.c_str());
       return;
     }
