@@ -27,6 +27,7 @@ setup(
             "demo_pick_vision = demo_scripts.demo_pick_vision:main",
             "demo_pick = demo_scripts.demo_pick:main",
             "demo_scan = demo_scripts.demo_scan:main",
+            "promo_scan = demo_scripts.promo_scan:main",
         ],
     },
 )
