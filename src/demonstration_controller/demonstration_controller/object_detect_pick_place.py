@@ -91,10 +91,10 @@ class ControllerNode(Node):
 
         #Logic variables
         
-        self.manipulator_start=False
+        
         self.store_initial_object_list = False
 
-        self.case_2_timer_create=False
+        
 
         self.back_n_spin_count=0
         self.back_n_spin_start=True
@@ -125,7 +125,7 @@ class ControllerNode(Node):
 
         
         #######################################
-        timer_period: float = 1/120
+        timer_period: float = 1/20
         self.timer = self.create_timer(timer_period, self.main_loop_callback)
     
 
@@ -154,15 +154,9 @@ class ControllerNode(Node):
             case 1:
                 
                 #manipulator switches between far scan 0 and 1
-                
-                if self.manipulator_start == False and self.controller_set_future == None:
-                    self.controller_set_config(2,self.config_1_set)
-                
-                
-
-
-                #start object detection
-                if self.manipulator_start == True and self.dectect_objects_on_future == None:
+                self.current_case=99
+                if self.dectect_objects_on_future == None:
+                    self.initial_object_list=[]
                     request_object_detection_on = DetectObjectsOn.Request()
                     
                     if self.dectect_objects_on_future is not None and not self.dectect_objects_on_future.done():
@@ -172,29 +166,45 @@ class ControllerNode(Node):
                         
                     self.dectect_objects_on_future=self.object_detection_on.call_async(request_object_detection_on)
                     self.dectect_objects_on_future.add_done_callback(self.after_object_detection_on)
+
+            case 11: 
+                if self.controller_set_future == None:
+                    self.controller_set_config(2,self.config_1_set)
+                
+                
+
+
+                #start object detection
+                
             case 2:
                 #object detection storing returns 
-                if self.case_2_timer_create==False:
+                    self.current_case=99
                     self.store_initial_object_list = True
                     #after 20 seconds turn off object detection and generate list of detected clusters 
                     #in order of largest to smallest no. of cluster points 
-                    self.case_2_timer_create=True
+                    
                     timer_period: float = 20
                     self.object_detection_timer = self.create_timer(timer_period, self.object_detection_timer_callback)
                     
                     
+            
+                    
             case 3:
                 #uses grasp block at given position
-                if self.controller_position_set_future == None:
+                
                     try:
-                        current_block_position=self.initial_object_list.pop(0)
+                        self.current_block_position=self.initial_object_list.pop(0)
+                        self.current_case=33
                     except:
                         self.current_case=1
-                        return
+                        self.initial_object_list=[]
+                #uses grasp block at given position
+            case 33:
+                    self.current_case=99
                     request_object_pick = ControllerPositionSet.Request()
-                    request_object_pick.x=current_block_position[0]
-                    request_object_pick.y=current_block_position[1]
-                    request_object_pick.z=current_block_position[2]
+                    request_object_pick.x=self.current_block_position[0]
+                    request_object_pick.y=self.current_block_position[1]
+                    request_object_pick.z=self.current_block_position[2]
                         
                     if self.controller_position_set_future is not None and not self.controller_position_set_future.done():
                             self.controller_position_set_future.cancel()
@@ -208,18 +218,23 @@ class ControllerNode(Node):
                 
             case 4:
                     if self.back_n_spin_start==True:
+                        self.current_case=99
                         timer_period_back_n_spin: float = 1/50
                         self.back_n_spin_start = False
                         
                         self.timer_for_back_n_spin = self.create_timer(timer_period_back_n_spin, self.back_n_spin_callback)
 
             case 5:
-                if self.manipulator_start == False and self.controller_set_future == None:
+                if self.controller_set_future == None:
+                    self.current_case=99
                     self.controller_set_config(7,self.place_object_callback)#set to the place config
 
             case 6: 
                 self.get_logger().info("Sequence complete.")
                 self.timer.cancel()
+
+            case 99:
+                pass
 
 
                     
@@ -229,12 +244,16 @@ class ControllerNode(Node):
     #####################################################################################################################################
     #keep these
 
-    def place_object_config(self,future):
+    def place_object_callback(self,future):
         response = future.result()
         if response.success == True:
-            self.manipulator_start=True
+            
             self.controller_set_future=None
             self.current_case = 6
+        if response.success == False:
+            
+            self.controller_set_future=None
+            self.current_case = 5
 
 
     def back_n_spin_callback(self):
@@ -242,19 +261,30 @@ class ControllerNode(Node):
         if self.back_n_spin_count <= 100:
             going_back=Twist()
             going_back.linear.x = -0.1
-            self.leo_velocity_publisher.publish()
+            self.leo_velocity_publisher.publish(going_back)
 
-        elif self.back_n_spin_count <= 300:
+        elif self.back_n_spin_count <= 200:
             going_back=Twist()
-            going_back.angular.z = 0.25
-            self.leo_velocity_publisher.publish()
+            going_back.angular.z = np.pi/8
+            self.leo_velocity_publisher.publish(going_back)
 
-        elif self.back_n_spin_count <= 400:
+        elif self.back_n_spin_count <= 600:
             going_back=Twist()
             going_back.linear.x = 0.1
-            self.leo_velocity_publisher.publish()
+            going_back.angular.z = 0
+            self.leo_velocity_publisher.publish(going_back)
+        
+        else:
+            going_forward = Twist()
+            going_forward.angular.z = 0
+            going_forward.linear.x = 0
+            self.leo_velocity_publisher.publish(going_forward)
             self.current_case = 5
+            self.back_n_spin_count=-1
             self.back_n_spin_start = True
+            self.timer_for_back_n_spin.cancel()
+
+        
 
         self.back_n_spin_count+=1
 
@@ -279,10 +309,15 @@ class ControllerNode(Node):
                 self.controller_set_future=None
                 self.controller_set_config(2,self.config_1_set)
             else:
-                self.manipulator_start=True
+                
                 self.controller_set_future=None
                 self.current_case = 2
                 self.config_count=0
+        if response.success==False:
+            self.current_case=11
+            self.controller_set_future=None
+                
+            self.config_count=0
             
 
     def record_detected_object_position(self,msg:DetectedObjects):
@@ -296,9 +331,15 @@ class ControllerNode(Node):
         response=future.result()
         if response.success==True:
             #next case
-            self.current_case=2
+            self.current_case=11
             #reset logic variables
-            self.manipulator_start=False
+            
+            self.dectect_objects_on_future = None
+        if response.success==False:
+            #next case
+            self.current_case=1
+            #reset logic variables
+            
             self.dectect_objects_on_future = None
 
     def object_detection_timer_callback(self):
@@ -319,15 +360,27 @@ class ControllerNode(Node):
         response = future.result()
         if response.success == True:
             results=self.clustering(0.1,self.initial_object_list)
+            self.object_detection_timer.cancel()
+            if results==None:
+                self.current_case=1
+                
+                self.dectect_objects_off_future = None
 
-            self.initial_object_list=[]
-            for item in results:
-                self.initial_object_list.append(item['position'])
+            else:
 
-            
-            self.current_case = 3
-            self.case_2_timer_create=False
+                self.initial_object_list=[]
+                for item in results:
+                    self.initial_object_list.append(item['position'])
+
+                
+                self.current_case = 3
+                
+                self.dectect_objects_off_future = None
+        if response.success ==False:
             self.dectect_objects_off_future = None
+            self.object_detection_timer_callback()
+
+    
     
     def after_controller_position_set(self,future):
         response=future.result()
@@ -335,28 +388,37 @@ class ControllerNode(Node):
             #next case
             self.current_case=4
             #reset logic variables
-            self.manipulator_start=False
+            
+            self.controller_position_set_future=None
+        if response.success==False:
+            #next case
+            self.current_case=33
+            #reset logic variables
+            
             self.controller_position_set_future=None
 
     def clustering(self,eps,list,min_samples=1):
         list=np.array(list)
-        db = DBSCAN(eps=eps, min_samples=min_samples).fit(list)
-        labels = db.labels_
+        try:
+            db = DBSCAN(eps=eps, min_samples=min_samples).fit(list)
+            labels = db.labels_
 
-            # Create a list of dictionaries containing cluster center and no points in cluster
-        results = []
-        for label in set(labels):
-            mask = (labels == label)
-            cluster_points = list[mask]
-            
-            results.append({
-                    'position': cluster_points.mean(axis=0),
-                    'count': len(cluster_points),
-                    
-                })
+                # Create a list of dictionaries containing cluster center and no points in cluster
+            results = []
+            for label in set(labels):
+                mask = (labels == label)
+                cluster_points = list[mask]
+                
+                results.append({
+                        'position': cluster_points.mean(axis=0),
+                        'count': len(cluster_points),
+                        
+                    })
 
-        # Sort the entire list by count (highest density first)
-        results.sort(key=lambda x: x['count'], reverse=True)
+            # Sort the entire list by count (highest density first)
+            results.sort(key=lambda x: x['count'], reverse=True)
+        except:
+            results=None
         return results
 
     

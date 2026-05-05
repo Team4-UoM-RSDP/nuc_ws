@@ -19,7 +19,7 @@ class ControllerNode(Node):
         super().__init__('leo_controller')
         self.current_case=0
 
-        self.starting_pos=None
+        
 
         """ self.task_space_pose_subscriber = self.create_subscription(
             msg_type = TaskSpacePose,
@@ -88,17 +88,19 @@ class ControllerNode(Node):
 
         #Logic variables
         
-        self.manipulator_start=False
+        
         self.store_initial_object_list = False
 
-        self.case_2_timer_create=False
-        self.back_n_spin_start=True
-        self.start_the_other_bit=False
+        
+       
+        
+        self.number_of_detection_scans=2
 
         self.config_count=0
         self.back_n_spin_count=0
-        self.back_n_spin=None
-        self.detector=False
+        
+      
+
 
 
         
@@ -133,6 +135,7 @@ class ControllerNode(Node):
     def main_loop_callback(self):
         match self.current_case:
             case 0:
+                self.current_case=4
                 #get the starting position before moving onto anything else
 
                 
@@ -141,7 +144,7 @@ class ControllerNode(Node):
                                 self.parent_name,
                                 self.child_name,
                                 rclpy.time.Time())
-                        self.starting_pos=tfs
+                        
                         self.get_logger().info(f"Starting Pose: {tfs}")
                        
 
@@ -149,19 +152,19 @@ class ControllerNode(Node):
 
                         self.get_logger().error(
                             f'Could not get transform from `{self.parent_name}` to `{self.child_name}`: {e}')
-                self.current_case=4
+                
 
             #case 1-3 look near stationary, detect,pick
             case 1:
-                
+                self.current_case=99
                 #manipulator switches between far scan 0 and 1
+                self.controller_set_config(4,self.config_4_set)
                 
-                if self.manipulator_start == False and self.controller_set_future == None:
-                    self.controller_set_config(4,self.config_4_set)
                     
 
                 #start object detection
-                if self.manipulator_start == True and self.dectect_objects_on_future == None:
+            case 11:
+                    self.case=99
                     request_object_detection_on = DetectObjectsOn.Request()
                     
                     if self.dectect_objects_on_future is not None and not self.dectect_objects_on_future.done():
@@ -171,30 +174,36 @@ class ControllerNode(Node):
                         
                     self.dectect_objects_on_future=self.object_detection_on.call_async(request_object_detection_on)
                     self.dectect_objects_on_future.add_done_callback(self.after_object_detection_on)
+                    
             case 2:
                 #object detection storing returns 
-                if self.case_2_timer_create==False:
+                    self.case=99
                     self.store_initial_object_list = True
                     #after 20 seconds turn off object detection and generate list of detected clusters 
                     #in order of largest to smallest no. of cluster points 
-                    self.case_2_timer_create=True
+                    
                     timer_period: float = 20
                     self.object_detection_timer = self.create_timer(timer_period, self.object_detection_timer_callback)
                     
                     
+                    
             case 3:
                 #uses grasp block at given position
-                if self.controller_position_set_future == None:
+                
                     try:
-                        current_block_position=self.initial_object_list.pop(0)
+                        self.current_block_position=self.initial_object_list.pop(0)
+                        self.current_case=33
                     except:
                         self.current_case=1
-                        self.manipulator_start = False
-                        return
+                        self.initial_object_list=[]
+                    
+                        
+            case 33:
+                    self.case=99
                     request_object_pick = ControllerPositionSet.Request()
-                    request_object_pick.x=current_block_position[0]
-                    request_object_pick.y=current_block_position[1]
-                    request_object_pick.z=current_block_position[2]
+                    request_object_pick.x=self.current_block_position[0]
+                    request_object_pick.y=self.current_block_position[1]
+                    request_object_pick.z=self.current_block_position[2]
                         
                     if self.controller_position_set_future is not None and not self.controller_position_set_future.done():
                             self.controller_position_set_future.cancel()
@@ -203,15 +212,16 @@ class ControllerNode(Node):
                             
                     self.controller_position_set_future=self.service_client_controller_position_set.call_async(request_object_pick)
                     self.controller_position_set_future.add_done_callback(self.after_controller_position_set)
+                    
 
                 
                 
             case 4:
                 
 
-                if self.detector==False and self.dectect_objects_on_future == None:
+                    self.current_case=99
                     request_object_detection_on = DetectObjectsOn.Request()
-                    self.detector=True
+                    
                     
                     
                     if self.dectect_objects_on_future is not None and not self.dectect_objects_on_future.done():
@@ -221,13 +231,16 @@ class ControllerNode(Node):
                             
                     self.dectect_objects_on_future=self.object_detection_on.call_async(request_object_detection_on)
                     self.dectect_objects_on_future.add_done_callback(self.after_object_detection_scanning)
+                    
+            case 44:
 
-                if self.start_the_other_bit==True and self.controller_set_future == None:
+                    self.current_case=99
                     self.controller_set_config(1,self.config_1_set)
+                    
                 
             
             case 5:
-                if self.dectect_objects_off_future == None:
+                    self.current_case=99
                     request_object_detection_off = DetectObjectsOff.Request()
                             
                     if self.dectect_objects_off_future is not None and not self.dectect_objects_off_future.done():
@@ -237,34 +250,41 @@ class ControllerNode(Node):
                                     
                     self.dectect_objects_off_future=self.object_detection_off.call_async(request_object_detection_off)
                     self.dectect_objects_off_future.add_done_callback(self.after_object_detection_scanning_off)
-                self.current_case=99
+                    
                     
             case 6:
-                if self.back_n_spin == None:
+                
                     
                     try:
-                        current_block_target=self.initial_object_list.pop(0)
+                        self.current_block_target=self.initial_object_list.pop(0)
                         self.back_n_spin_count = 0
+                        self.current_case=66
                     except:
-                        self.current_case=4
-                        self.back_n_spin = None
-                        self.back_n_spin_start = True
                         
+                       
+                        
+                        self.initial_object_list=[]
+                        self.current_case=4
                         return
-                    self.back_n_spin=1
-                    current_block_target[0]=current_block_target[0]-0.0305
-                    current_block_target[1]=current_block_target[1]
-                    angle=np.arctan2(current_block_target[1],current_block_target[0])
+            case 66:
+                    self.current_case=99
+                    self.current_block_target[0]=self.current_block_target[0]-0.0305
+                    self.current_block_target[1]=self.current_block_target[1]#adjust this once you know the frame of the manipulators y direction in respect to the rovers
+                    angle=np.arctan2(self.current_block_target[1],self.current_block_target[0])
                     self.angle_in_4_seconds=angle/4
-                    distance=np.sqrt(current_block_target[0]**2+current_block_target[1]**2)-0.218
+                    distance=np.sqrt(self.current_block_target[0]**2+self.current_block_target[1]**2)-0.218
                     self.distance_in_4_seconds=distance/4
 
-                    if self.back_n_spin_start==True:
-                        timer_period_back_n_spin: float = 1/50
-                        self.back_n_spin_start = False
+                    
+                    timer_period_back_n_spin: float = 1/50
+                    
                         
-                        self.timer_for_back_n_spin = self.create_timer(timer_period_back_n_spin, self.back_n_spin_callback)
-                        self.current_case=99
+                    self.timer_for_back_n_spin = self.create_timer(timer_period_back_n_spin, self.back_n_spin_callback)
+                    
+            
+            case 98:
+                self.get_logger().info('Operation complete...')
+                self.timer.cancel()
 
             case 99:
                 pass
@@ -295,17 +315,17 @@ class ControllerNode(Node):
             self.leo_velocity_publisher.publish(going_forward)
             if self.distance_in_4_seconds*4>2:
                 self.current_case=4
-                self.back_n_spin_start=True
+               
                 self.back_n_spin_count = 0
                 self.timer_for_back_n_spin.cancel()
-                self.back_n_spin=None
+                
                 self.initial_object_list=[]
             else:
                 self.current_case=1
-                self.back_n_spin_start=True
+                
                 self.back_n_spin_count = 0
                 self.timer_for_back_n_spin.cancel()
-                self.back_n_spin=None
+                
                 self.initial_object_list=[]
 
 
@@ -320,20 +340,22 @@ class ControllerNode(Node):
             if results==None:
                 self.current_case=4
                 self.initial_object_list=[]
+                self.number_of_detection_scans+=1
                 self.get_logger().warn('clustering failed')
             else:
 
                 self.initial_object_list=[]
+                self.number_of_detection_scans=2
                 for item in results:
                     self.initial_object_list.append(item['position'])
 
                 
                 self.current_case = 6
-                self.case_2_timer_create=False
+                
                 self.dectect_objects_off_future = None
-                self.detector = False
+                
         if response.success==False:
-            self.get_logger().info('object detection off failed')
+            self.get_logger().info('object detection off failed...\nTrying again')
             self.dectect_objects_off_future = None
             self.current_case=5
 
@@ -341,29 +363,34 @@ class ControllerNode(Node):
         response=future.result()
         if response.success==True:
             self.get_logger().info('object detection on')
-            self.start_the_other_bit=True
+            self.current_case=44
             self.dectect_objects_on_future = None
         if response.success==False:
             self.dectect_objects_on_future=None
-            self.detector=False
+            self.get_logger().warn('object detection on failed....\nTrying again')
+            self.current_case=4
 
 
     def config_1_set(self,future):
         response=future.result()
         if response.success==True:
 
-            self.detector=False
+            
             self.config_count+=1
-            if self.config_count<3:
+            if self.config_count<self.number_of_detection_scans:
                 self.controller_set_future=None
                 self.controller_set_config(2,self.config_1_set)
             else:
                 
                 self.controller_set_future=None
                 self.current_case = 5
-                self.start_the_other_bit=False
+                
                 self.config_count=0
-                self.detector=False
+                
+        elif response.success==False:
+            self.controller_set_future=None
+            self.get_logger().warn('Config 2 failed....\nTrying again')
+            self.current_case=44
 
     def controller_set_config(self,config:int,callback):
         request_manipulator_config = ControllerSet.Request()
@@ -380,9 +407,12 @@ class ControllerNode(Node):
     def config_4_set(self,future):
         response=future.result()
         if response.success==True:
-            self.manipulator_start=True
+            
             self.controller_set_future=None
-            self.current_case = 2
+            self.current_case = 11
+        if response.success==False:
+            self.current_case=1
+            self.controller_set_future=None
             
 
     def record_detected_object_position(self,msg:DetectedObjects):
@@ -398,7 +428,10 @@ class ControllerNode(Node):
             #next case
             self.current_case=2
             #reset logic variables
-            self.manipulator_start=False
+            self.dectect_objects_on_future = None
+        if response.success==False:
+            #next case
+            self.current_case=11
             self.dectect_objects_on_future = None
             
             
@@ -434,16 +467,26 @@ class ControllerNode(Node):
 
                 
                 self.current_case = 3
-                self.case_2_timer_create=False
+                
+
                 self.dectect_objects_off_future = None
+        elif response.success==False:
+            self.dectect_objects_off_future == None
+
     
     def after_controller_position_set(self,future):
         response=future.result()
         if response.success==True:
             #next case
-            self.current_case=4
+            self.current_case=98
             #reset logic variables
-            self.manipulator_start=False
+            
+            self.controller_position_set_future=None
+        if response.success==False:
+            #next case
+            self.current_case=33
+            #reset logic variables
+            
             self.controller_position_set_future=None
 
     def clustering(self,eps,list,min_samples=1):

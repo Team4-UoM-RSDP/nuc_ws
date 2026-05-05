@@ -42,7 +42,7 @@ class DemoNode(Node):
     def timer_callback(self):
         """Method that is periodically called by the timer."""
         msg = Twist()
-        msg.angular.z = 10.0
+        msg.angular.z = 0.5
         self.publisher_.publish(msg)
         self.get_logger().info(f'Publishing: x vel : {msg.linear.x}' )
         self.i += 1
