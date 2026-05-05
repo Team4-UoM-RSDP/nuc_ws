@@ -151,7 +151,7 @@ class DemoScan(Node):
             case 1:
                 # manipulator switches between far scan 0 and 1
                 self.current_case = 99
-                if self.dectect_objects_on_future == None:
+                if self.dectect_objects_on_future is None:
                     self.initial_object_list = []
                     request_object_detection_on = DetectObjectsOn.Request()
 
@@ -172,7 +172,7 @@ class DemoScan(Node):
                     )
 
             case 11:
-                if self.controller_set_future == None:
+                if self.controller_set_future is None:
                     self.controller_set_config(4, self.config_1_set)
 
                 # start object detection
@@ -230,7 +230,7 @@ class DemoScan(Node):
                 self.timer.cancel()
 
             case 5:
-                if self.controller_set_future == None:
+                if self.controller_set_future is None:
                     self.current_case = 99
                     self.controller_set_config(
                         7, self.place_object_callback
