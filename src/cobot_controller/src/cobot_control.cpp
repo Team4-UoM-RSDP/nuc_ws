@@ -18,6 +18,7 @@
 #include <cmath>
 #include <moveit/move_group_interface/move_group_interface.hpp>
 #include <controller_interfaces/srv/controller_set.hpp>
+#include <controller_interfaces/srv/controller_position_set.hpp>
 
 /**
  * @class CobotNode
@@ -48,7 +49,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr gripper_pub_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_states_sub_;
   rclcpp::Service<controller_interfaces::srv::ControllerSet>::SharedPtr controller_set_server_;
-  
+  rclcpp::Service<controller_interfaces::srv::ControllerPositionSet>::SharedPtr controller_position_set_server_;
   // ============================================================================
   // STATE MANAGEMENT
   // ============================================================================
@@ -80,6 +81,14 @@ private:
                std::shared_ptr<controller_interfaces::srv::ControllerSet::Response> response)
         {
           response->success = this->handleControllerSetRequest(request->config);
+        });
+
+    controller_position_set_server_ = node_->create_service<controller_interfaces::srv::ControllerPositionSet>(
+        "/controller_position_set",
+        [this](const std::shared_ptr<controller_interfaces::srv::ControllerPositionSet::Request> request,
+               std::shared_ptr<controller_interfaces::srv::ControllerPositionSet::Response> response)
+        {
+          response->success = this->handleControllerPositionSetRequest(request->x, request->y, request->z);
         });
 
     joint_states_sub_ = node_->create_subscription<sensor_msgs::msg::JointState>(
@@ -375,6 +384,7 @@ private:
     RCLCPP_INFO(node_->get_logger(), "Drop block sequence completed successfully");
     return true;
   }
+
   bool handleControllerSetRequest(int config)
   {
     RCLCPP_INFO(node_->get_logger(), "Received ControllerSet request: %d", config);
@@ -401,6 +411,13 @@ private:
       RCLCPP_WARN(node_->get_logger(), "Unknown ControllerSet config: %d", config);
       return false;
     }
+  }
+
+  bool handleControllerPositionSetRequest(double x, double y, double z)
+  {
+    RCLCPP_INFO(node_->get_logger(), "Received ControllerPositionSet request: x=%.3f, y=%.3f, z=%.3f", x, y, z);
+    RCLCPP_WARN(node_->get_logger(), "ControllerPositionSet handling not yet implemented");
+    return false;
   }
 
   // ============================================================================
