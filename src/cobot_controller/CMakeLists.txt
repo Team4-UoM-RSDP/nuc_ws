@@ -23,7 +23,7 @@ find_package(controller_interfaces REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(moveit_core REQUIRED)
 find_package(moveit_ros_planning REQUIRED)
-find_package(moveit_task_constructor_core REQUIRED)
+find_package(moveit_ros_planning_interface REQUIRED)
 
 # Cobot controller executable
 add_executable(cobot_control src/cobot_control.cpp)
@@ -34,7 +34,7 @@ ament_target_dependencies(
   std_msgs
   moveit_core
   moveit_ros_planning
-  moveit_task_constructor_core
+  moveit_ros_planning_interface
 )
 
 # Install targets
