@@ -40,7 +40,7 @@ class DemoScan(Node):
             self.transform_listener_buffer, self
         )
         self.parent_name = "world"
-        self.child_name = "leo1/base_link"
+        self.child_name = "base_link"
 
         ###################################################
         # Topic and Service initialisation
