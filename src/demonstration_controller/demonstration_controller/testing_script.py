@@ -4,12 +4,11 @@ import tf2_ros
 import numpy as np
 from sklearn.cluster import DBSCAN
 
-from controller_interfaces import ControllerSet
-from controller_interfaces import ControllerPositionSet
-from controller_interfaces import DetectedObjects
-from controller_interfaces import DetectObjectsOn
-from controller_interfaces import DetectObjectsOff
-
+from controller_interfaces.srv import ControllerSet
+from controller_interfaces.srv import ControllerPositionSet
+from controller_interfaces.msg import DetectedObjects
+from controller_interfaces.srv import DetectObjectsOn
+from controller_interfaces.srv import DetectObjectsOff
 from geometry_msgs.msg import Twist
 import random 
 
