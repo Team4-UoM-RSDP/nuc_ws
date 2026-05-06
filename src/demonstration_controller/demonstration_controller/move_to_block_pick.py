@@ -313,7 +313,7 @@ class ControllerNode(Node):
             going_forward.angular.z = 0
             going_forward.linear.x = 0
             self.leo_velocity_publisher.publish(going_forward)
-            if self.distance_in_4_seconds*4>2:
+            if self.distance_in_4_seconds*4>0.2:
                 self.current_case=4
                
                 self.back_n_spin_count = 0
@@ -477,9 +477,11 @@ class ControllerNode(Node):
     def after_controller_position_set(self,future):
         response=future.result()
         if response.success==True:
+            self.controller_set_config(6,self.config_6)
             #next case
-            self.current_case=98
+            
             #reset logic variables
+    
             
             self.controller_position_set_future=None
         if response.success==False:
@@ -488,6 +490,14 @@ class ControllerNode(Node):
             #reset logic variables
             
             self.controller_position_set_future=None
+    def config_6(self,future):
+            response=future.result()
+            if response.success==True:
+                self.current_case=98
+                self.controller_position_set_future=None
+            else:
+                self.controller_set_config(6,self.config_6)
+                self.controller_position_set_future=None
 
     def clustering(self,eps,list,min_samples=1):
         list=np.array(list)

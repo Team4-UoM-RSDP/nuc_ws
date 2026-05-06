@@ -287,6 +287,7 @@ class ControllerNode(Node):
 
 
     def controller_set_config(self,config:int,callback):
+        
         request_manipulator_config = ControllerSet.Request()
         request_manipulator_config.config = config 
                     
@@ -383,7 +384,8 @@ class ControllerNode(Node):
         response=future.result()
         if response.success==True:
             #next case
-            self.current_case=4
+            self.controller_set_config(6,self.config_6)
+            
             #reset logic variables
             
             self.controller_position_set_future=None
@@ -393,6 +395,15 @@ class ControllerNode(Node):
             #reset logic variables
             
             self.controller_position_set_future=None
+
+    def config_6(self,future):
+            response=future.result()
+            if response.success==True:
+                self.current_case=4
+                self.controller_position_set_future=None
+            else:
+                self.controller_position_set_future=None
+                self.controller_set_config(6,self.config_6)
 
     def clustering(self,eps,list,min_samples=1):
         list=np.array(list)
