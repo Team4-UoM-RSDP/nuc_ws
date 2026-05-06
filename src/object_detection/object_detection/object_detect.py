@@ -1,5 +1,6 @@
 import argparse
 import math
+import os
 
 import pyrealsense2 as rs
 import numpy as np
@@ -16,7 +17,7 @@ from controller_interfaces.msg import DetectedObjects
 import tf2_ros
 
 
-SHAPE_WEIGHTS = r"/home/laptop32/Downloads/mission_sim/src/rgbd_integration/rgbd_integration/weights.pt"
+SHAPE_WEIGHTS = os.path.join(os.path.dirname(__file__), "weights.pt")
 
 IMG_SIZE = 736
 DEVICE = "cpu"
@@ -37,11 +38,12 @@ class ObjectDetectionPublisher(Node):
         self.align = None
         self.depth_scale = None
 
-
         self.transform_listener_buffer = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.transform_listener_buffer, self)
-        self.parent_name="/base_link"#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        self.child_name="/camera_color_frame"
+        self.tf_listener = tf2_ros.TransformListener(
+            self.transform_listener_buffer, self
+        )
+        self.parent_name = "/base_link"  #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        self.child_name = "/camera_color_frame"
 
         self.color_pub = self.create_publisher(
             String,
@@ -51,7 +53,7 @@ class ObjectDetectionPublisher(Node):
 
         self.position_pub = self.create_publisher(
             msg_type=DetectedObjects,
-            topic='/detected_objects',
+            topic="/detected_objects",
             qos_profile=1,
         )
 
@@ -87,7 +89,6 @@ class ObjectDetectionPublisher(Node):
         self.color_pub.publish(color_msg)
 
         pos_msg = DetectedObjects()
-        
 
         pos_msg.x = float(x)
         pos_msg.y = float(y)
@@ -255,32 +256,27 @@ class ObjectDetectionPublisher(Node):
             if depth is None or depth <= 0:
                 continue
             try:
-                        self.tfs =   self.transform_listener_buffer.lookup_transform(
-                                self.parent_name,
-                                self.child_name,
-                                rclpy.time.Time())
-                        
-                        
-                        candidates.append(
-                                    (
-                                        depth,
-                                        i,
-                                        x1,
-                                        y1,
-                                        x2,
-                                        y2,
-                                        x_center,
-                                        y_center,
-                                    )
-                                )
-                       
+                self.tfs = self.transform_listener_buffer.lookup_transform(
+                    self.parent_name, self.child_name, rclpy.time.Time()
+                )
+
+                candidates.append(
+                    (
+                        depth,
+                        i,
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        x_center,
+                        y_center,
+                    )
+                )
 
             except tf2_ros.TransformException as e:
-
-                        self.get_logger().error(
-                            f'Could not get transform from `{self.parent_name}` to `{self.child_name}`: {e}')
-            
-
+                self.get_logger().error(
+                    f"Could not get transform from `{self.parent_name}` to `{self.child_name}`: {e}"
+                )
 
         if not candidates:
             cv2.imshow("RealSense Color+Shape ROS2", color_image)
@@ -338,8 +334,8 @@ class ObjectDetectionPublisher(Node):
             [float(refined_center_x), float(refined_center_y)],
             float(refined_depth),
         )
-        R, translate=get_rotation_translation_matrix(self.tfs)
-        Transformed=R@(np.array([X,Y,Z]).T)+(translate.T)
+        R, translate = get_rotation_translation_matrix(self.tfs)
+        Transformed = R @ (np.array([X, Y, Z]).T) + (translate.T)
         self.publish_detection(
             pred_color,
             Transformed[0],
@@ -444,6 +440,7 @@ class ObjectDetectionPublisher(Node):
         self.shutdown_camera()
         super().destroy_node()
 
+
 def get_rotation_translation_matrix(tfs):
     x = tfs.transform.translation.x
     y = tfs.transform.translation.y
@@ -461,7 +458,7 @@ def get_rotation_translation_matrix(tfs):
     # Pitch (y-axis rotation)
     sinp = 2 * (qw * qy - qz * qx)
     if abs(sinp) >= 1:
-        p = math.copysign(math.pi / 2, sinp) # use 90 degrees if out of range
+        p = math.copysign(math.pi / 2, sinp)  # use 90 degrees if out of range
     else:
         p = math.asin(sinp)
 
@@ -469,7 +466,7 @@ def get_rotation_translation_matrix(tfs):
     siny_cosp = 2 * (qw * qz + qx * qy)
     cosy_cosp = 1 - 2 * (qy * qy + qz * qz)
     y = math.atan2(siny_cosp, cosy_cosp)
-    
+
     # Pre-calculate sines and cosines
     cx = np.cos(r)
     sx = np.sin(r)
@@ -479,13 +476,15 @@ def get_rotation_translation_matrix(tfs):
     sz = np.sin(y)
 
     # Combined matrix expansion
-    R = np.array([
-        [cz*cy, cz*sy*sx - sz*cx, cz*sy*cx + sz*sx],
-        [sz*cy, sz*sy*sx + cz*cx, sz*sy*cx - cz*sx],
-        [-sy,   cy*sx,            cy*cx           ]
-    ])
+    R = np.array(
+        [
+            [cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx],
+            [sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx],
+            [-sy, cy * sx, cy * cx],
+        ]
+    )
 
-    return R, [x,y,z]
+    return R, [x, y, z]
 
 
 def median_depth_m(depth_image, x, y, depth_scale, radius=4):
@@ -574,8 +573,7 @@ def dominant_color_bgr(
     total_pixels = h_valid.size
 
     color_scores = {
-        name: count_range(h_valid, ranges)
-        for name, ranges in color_ranges.items()
+        name: count_range(h_valid, ranges) for name, ranges in color_ranges.items()
     }
 
     best_color, best_count = max(color_scores.items(), key=lambda x: x[1])
@@ -586,9 +584,8 @@ def dominant_color_bgr(
     if best_color != "red":
         return best_color
 
-    redfam_mask = (
-        ((h_valid >= 0) & (h_valid <= 15))
-        | ((h_valid >= 150) & (h_valid <= 179))
+    redfam_mask = ((h_valid >= 0) & (h_valid <= 15)) | (
+        (h_valid >= 150) & (h_valid <= 179)
     )
 
     redfam_count = redfam_mask.sum()
@@ -612,6 +609,7 @@ def dominant_color_bgr(
 # 边缘检测 / 颜色 mask / bbox 细化
 # =========================================================
 
+
 def hsv_mask_for_color(bgr_img, color):
     hsv = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
@@ -619,14 +617,10 @@ def hsv_mask_for_color(bgr_img, color):
     valid = (s > 40) & (v > 40)
 
     if color == "red":
-        mask = valid & (
-            ((h >= 0) & (h <= 15))
-            | ((h >= 150) & (h <= 179))
-        )
+        mask = valid & (((h >= 0) & (h <= 15)) | ((h >= 150) & (h <= 179)))
     elif color == "pink":
-        mask = (s > 25) & (v > 80) & (
-            ((h >= 0) & (h <= 18))
-            | ((h >= 145) & (h <= 179))
+        mask = (
+            (s > 25) & (v > 80) & (((h >= 0) & (h <= 18)) | ((h >= 145) & (h <= 179)))
         )
     elif color == "yellow":
         mask = valid & (h >= 18) & (h <= 40)
@@ -714,6 +708,7 @@ def refine_bbox_by_color_edges(color_image, bbox, pred_color):
 # =========================================================
 # 用边缘角点估计 cube 尺寸
 # =========================================================
+
 
 def deproject_point(depth_intrin, pixel, depth_m):
     if depth_m is None or depth_m <= 0:
@@ -823,7 +818,6 @@ def parse_args(args=None):
     return parser.parse_known_args(args)[0]
 
 
-
 def main(args=None):
     rclpy.init(args=args)
     ros_node = None
@@ -835,6 +829,7 @@ def main(args=None):
         pass
     except Exception as e:
         print(e)
-    
-if __name__=='__main__':
+
+
+if __name__ == "__main__":
     main()
