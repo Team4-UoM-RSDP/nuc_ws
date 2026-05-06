@@ -34,11 +34,7 @@ class ControllerNode(Node):
         #Topic and Service initialisation
 
         #initialise topic subscribers
-        self.object_detection_subscriber = self.create_subscription(
-            msg_type=DetectedObjects,
-            topic='/detected_objects',
-            callback=self.record_detected_object_position,
-            qos_profile=1)
+        
         
         self.leo_velocity_publisher = self.create_publisher(
             msg_type = Twist,
@@ -59,7 +55,7 @@ class ControllerNode(Node):
              callback=self.object_on)
 
         
-        self.object_detection_off = self.create_client(
+        self.object_detection_off = self.create_service(
              srv_type=DetectObjectsOff,
              srv_name='/turn_object_detection_off',
              callback=self.object_off)
@@ -99,28 +95,21 @@ class ControllerNode(Node):
         #Wait for service servers to come online
 
         
-        #Cobot
-        while not self.service_client_controller_set.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info(f'service {self.service_client_controller_set.srv_name} not available, waiting...')
-        while not self.service_client_controller_position_set.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info(f'service {self.service_client_controller_position_set.srv_name} not available, waiting...')
-        
-
-        #Object detection
-        while not self.object_detection_on.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info(f'service {self.object_detection_on.srv_name} not available, waiting...')
-        while not self.object_detection_off.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info(f'service {self.object_detection_off.srv_name} not available, waiting...')
         
         timer_period: float = 1/20
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
-    def set_callback(self,request,response):
-            self.object_publish=True
+    def pos_set_callback(self,request,response):
+            
             response.success=True
             return response
     
     def set_callback(self,request,response):
+            
+            response.success=True
+            return response
+    
+    def object_on(self,request,response):
             self.object_publish=True
             response.success=True
             return response

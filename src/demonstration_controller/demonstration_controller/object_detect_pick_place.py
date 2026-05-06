@@ -132,6 +132,7 @@ class ControllerNode(Node):
     def main_loop_callback(self):
         match self.current_case:
             case 0:
+                self.get_logger().info(f'Case : {self.current_case}' )
                 #get the starting position before moving onto anything else
 
                 
@@ -152,6 +153,7 @@ class ControllerNode(Node):
 
 
             case 1:
+                self.get_logger().info(f'Case : {self.current_case}' )
                 
                 #manipulator switches between far scan 0 and 1
                 self.current_case=99
@@ -168,6 +170,7 @@ class ControllerNode(Node):
                     self.dectect_objects_on_future.add_done_callback(self.after_object_detection_on)
 
             case 11: 
+                self.get_logger().info(f'Case : {self.current_case}' )
                 if self.controller_set_future == None:
                     self.controller_set_config(2,self.config_1_set)
                 
@@ -177,6 +180,7 @@ class ControllerNode(Node):
                 #start object detection
                 
             case 2:
+                    self.get_logger().info(f'Case : {self.current_case}' )
                 #object detection storing returns 
                     self.current_case=99
                     self.store_initial_object_list = True
@@ -190,6 +194,7 @@ class ControllerNode(Node):
             
                     
             case 3:
+                    self.get_logger().info(f'Case : {self.current_case}' )
                 #uses grasp block at given position
                 
                     try:
@@ -200,6 +205,7 @@ class ControllerNode(Node):
                         self.initial_object_list=[]
                 #uses grasp block at given position
             case 33:
+                    self.get_logger().info(f'Case : {self.current_case}' )
                     self.current_case=99
                     request_object_pick = ControllerPositionSet.Request()
                     request_object_pick.x=self.current_block_position[0]
@@ -217,6 +223,7 @@ class ControllerNode(Node):
                 
                 
             case 4:
+                    self.get_logger().info(f'Case : {self.current_case}' )
                     if self.back_n_spin_start==True:
                         self.current_case=99
                         timer_period_back_n_spin: float = 1/50
@@ -225,6 +232,7 @@ class ControllerNode(Node):
                         self.timer_for_back_n_spin = self.create_timer(timer_period_back_n_spin, self.back_n_spin_callback)
 
             case 5:
+                self.get_logger().info(f'Case : {self.current_case}' )
                 if self.controller_set_future == None:
                     self.current_case=99
                     self.controller_set_config(7,self.place_object_callback)#set to the place config

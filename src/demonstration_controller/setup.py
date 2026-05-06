@@ -29,7 +29,8 @@ setup(
             'move_to_block_pick = demonstration_controller.move_to_block_pick:main',
             'object_detect_pick_place = demonstration_controller.object_detect_pick_place:main',
             'demo_takeover = demonstration_controller.demo_takeover:main',
-            'testing_script = demonstration_controller.testing_script.py:main'
+            'testing_script = demonstration_controller.testing_script:main',
+            'initial_pos_test = demonstration_controller.initial_pos_test:main'
 
         ],
     },

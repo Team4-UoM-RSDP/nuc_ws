@@ -119,6 +119,7 @@ class ControllerNode(Node):
     def main_loop_callback(self):
         match self.current_case:
             case 0:
+                self.get_logger().info(f'Case : {self.current_case}' )
                 #get the starting position before moving onto anything else
 
                 
@@ -139,7 +140,7 @@ class ControllerNode(Node):
 
 
             case 1:
-                
+                self.get_logger().info(f'Case : {self.current_case}' )
                 #manipulator switches between far scan 0 and 1
                 self.current_case=99
                 if self.controller_set_future == None:
@@ -149,6 +150,7 @@ class ControllerNode(Node):
 
             
             case 2:
+                self.get_logger().info(f'Case : {self.current_case}' )
                 #object detection storing returns 
                 self.current_case=99
                 if self.controller_set_future == None:
@@ -156,6 +158,7 @@ class ControllerNode(Node):
                     
                     
             case 3:
+                self.get_logger().info(f'Case : {self.current_case}' )
                 #uses grasp block at given position
                 self.current_case=99
                 if self.controller_set_future == None:
@@ -164,6 +167,7 @@ class ControllerNode(Node):
                 
                 
             case 4:
+                self.get_logger().info(f'Case : {self.current_case}' )
                 self.get_logger().info("Sequence complete.")
                 self.timer.cancel()
 
@@ -196,6 +200,11 @@ class ControllerNode(Node):
             self.controller_set_future=None
             self.current_case=1
             self.get_logger().info("config 1 set failed")
+
+    def record_detected_object_position(self,msg:DetectedObjects):
+        if self.store_initial_object_list==True:
+            msg_array=[msg.x,msg.y,msg.z]
+            self.initial_object_list.append(msg_array)
 
 
     

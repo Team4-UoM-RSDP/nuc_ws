@@ -16,7 +16,7 @@ class DemoNode(Node):
     """A ROS2 Node that publishes an amazing quote."""
 
     def __init__(self):
-        super().__init__('demo node')
+        super().__init__('demo_node')
         self.publisher_ = self.create_publisher(Twist, '/cmd_vel', 10)
         timer_period = 0.5  # seconds
         self.controller_set_future=None

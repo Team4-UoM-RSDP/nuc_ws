@@ -587,6 +587,8 @@ class FrontierExplorer(Node):
             t = self.tf_buf.lookup_transform(
                 self.p_map_frame, self.p_robot_frame, rclpy.time.Time()
             )
+            
+
             tx = t.transform.translation.x
             ty = t.transform.translation.y
             q = t.transform.rotation

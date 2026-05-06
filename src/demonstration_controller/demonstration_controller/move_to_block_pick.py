@@ -135,6 +135,7 @@ class ControllerNode(Node):
     def main_loop_callback(self):
         match self.current_case:
             case 0:
+                self.get_logger().info(f'Case : {self.current_case}' )
                 self.current_case=4
                 #get the starting position before moving onto anything else
 
@@ -156,6 +157,7 @@ class ControllerNode(Node):
 
             #case 1-3 look near stationary, detect,pick
             case 1:
+                self.get_logger().info(f'Case : {self.current_case}' )
                 self.current_case=99
                 #manipulator switches between far scan 0 and 1
                 self.controller_set_config(4,self.config_4_set)
@@ -164,6 +166,7 @@ class ControllerNode(Node):
 
                 #start object detection
             case 11:
+                    self.get_logger().info(f'Case : {self.current_case}' )
                     self.case=99
                     request_object_detection_on = DetectObjectsOn.Request()
                     
@@ -176,6 +179,7 @@ class ControllerNode(Node):
                     self.dectect_objects_on_future.add_done_callback(self.after_object_detection_on)
                     
             case 2:
+                    self.get_logger().info(f'Case : {self.current_case}' )
                 #object detection storing returns 
                     self.case=99
                     self.store_initial_object_list = True
@@ -188,6 +192,7 @@ class ControllerNode(Node):
                     
                     
             case 3:
+                    self.get_logger().info(f'Case : {self.current_case}' )
                 #uses grasp block at given position
                 
                     try:
@@ -199,6 +204,7 @@ class ControllerNode(Node):
                     
                         
             case 33:
+                    self.get_logger().info(f'Case : {self.current_case}' )
                     self.case=99
                     request_object_pick = ControllerPositionSet.Request()
                     request_object_pick.x=self.current_block_position[0]
@@ -217,7 +223,7 @@ class ControllerNode(Node):
                 
                 
             case 4:
-                
+                    self.get_logger().info(f'Case : {self.current_case}' )
 
                     self.current_case=99
                     request_object_detection_on = DetectObjectsOn.Request()
@@ -233,6 +239,7 @@ class ControllerNode(Node):
                     self.dectect_objects_on_future.add_done_callback(self.after_object_detection_scanning)
                     
             case 44:
+                    self.get_logger().info(f'Case : {self.current_case}' )
 
                     self.current_case=99
                     self.controller_set_config(1,self.config_1_set)
@@ -240,6 +247,7 @@ class ControllerNode(Node):
                 
             
             case 5:
+                    self.get_logger().info(f'Case : {self.current_case}' )
                     self.current_case=99
                     request_object_detection_off = DetectObjectsOff.Request()
                             
@@ -253,6 +261,7 @@ class ControllerNode(Node):
                     
                     
             case 6:
+                    self.get_logger().info(f'Case : {self.current_case}' )
                 
                     
                     try:
@@ -267,6 +276,7 @@ class ControllerNode(Node):
                         self.current_case=4
                         return
             case 66:
+                    self.get_logger().info(f'Case : {self.current_case}' )
                     self.current_case=99
                     self.current_block_target[0]=self.current_block_target[0]-0.0305
                     self.current_block_target[1]=self.current_block_target[1]#adjust this once you know the frame of the manipulators y direction in respect to the rovers
