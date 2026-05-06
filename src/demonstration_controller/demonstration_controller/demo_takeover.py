@@ -4,7 +4,11 @@ from rclpy.node import Node
 
 from std_msgs.msg import String
 from geometry_msgs.msg import Twist
-from controller_interfaces import ControllerSet
+from controller_interfaces.srv import ControllerSet
+from controller_interfaces.srv import ControllerPositionSet
+from controller_interfaces.msg import DetectedObjects
+from controller_interfaces.srv import DetectObjectsOn
+from controller_interfaces.srv import DetectObjectsOff
 
 
 
