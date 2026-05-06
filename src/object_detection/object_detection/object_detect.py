@@ -35,6 +35,7 @@ class ObjectDetectionPublisher(Node):
         self.model = None
         self.shape_names = None
         self.pipeline = None
+        self.pipeline_started = False
         self.align = None
         self.depth_scale = None
 
@@ -155,6 +156,7 @@ class ObjectDetectionPublisher(Node):
         )
 
         profile = self.pipeline.start(config)
+        self.pipeline_started = True
         self.align = rs.align(rs.stream.color)
 
         depth_sensor = profile.get_device().first_depth_sensor()
@@ -166,9 +168,10 @@ class ObjectDetectionPublisher(Node):
         self.get_logger().info("Camera and YOLO initialised")
 
     def shutdown_camera(self):
-        if self.pipeline is not None:
+        if self.pipeline is not None and self.pipeline_started:
             self.pipeline.stop()
-            self.pipeline = None
+            self.pipeline_started = False
+        self.pipeline = None
         self.align = None
         self.depth_scale = None
         cv2.destroyAllWindows()
