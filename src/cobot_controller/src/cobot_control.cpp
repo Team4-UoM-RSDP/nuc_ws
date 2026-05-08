@@ -347,6 +347,8 @@ private:
         target = last_block_pose_;
       }
 
+      target.position.z += 0.11; // 11 cm offset to align claws with block top
+
       // Set upright orientation (gripper pointing down, camera facing up)
       // Using quaternion that represents 180 degree rotation around X axis
       target.orientation.x = 1.0;
@@ -355,7 +357,7 @@ private:
       target.orientation.w = 0.0;
 
       geometry_msgs::msg::Pose above = target;
-      above.position.z += 0.10; // 10 cm above
+      above.position.z += 0.10; // 10 cm above the adjusted position
 
       // Move to above the block
       if (!moveToPose(above))
