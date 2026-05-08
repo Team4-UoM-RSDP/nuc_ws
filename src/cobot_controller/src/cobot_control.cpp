@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cmath>
 #include <moveit/move_group_interface/move_group_interface.hpp>
+#include <moveit_msgs/msg/constraints.hpp>
 #include <controller_interfaces/srv/controller_set.hpp>
 #include <controller_interfaces/srv/controller_position_set.hpp>
 
@@ -249,6 +250,45 @@ private:
   }
 
   /**
+   * @brief Add orientation constraint to allow camera Z rotation but fix Z-axis direction
+   * Camera +Z must point toward world +Y, but free to rotate around that axis (global Z)
+   */
+  void allowCameraZRotationConstraint()
+  {
+    moveit_msgs::msg::Constraints constraints;
+    moveit_msgs::msg::OrientationConstraint orientation_constraint;
+    
+    orientation_constraint.header.frame_id = "base_link";
+    orientation_constraint.link_name = "gripper_base";
+    // Target orientation: camera +Z pointing in world +Y
+    // Quaternion for 90° rotation around Y axis
+    orientation_constraint.orientation.x = 0.0;
+    orientation_constraint.orientation.y = 0.707;
+    orientation_constraint.orientation.z = 0.0;
+    orientation_constraint.orientation.w = 0.707;
+    // High tolerance on X and Y axes allows free rotation around global Z
+    // Tight tolerance on Z axis keeps camera +Z pointing in +Y direction
+    orientation_constraint.absolute_x_axis_tolerance = 1.57;  // ~90 degrees (free rotation)
+    orientation_constraint.absolute_y_axis_tolerance = 1.57;  // ~90 degrees (free rotation)
+    orientation_constraint.absolute_z_axis_tolerance = 0.1;   // ~6 degrees (tight constraint)
+    orientation_constraint.weight = 1.0;
+    
+    constraints.orientation_constraints.push_back(orientation_constraint);
+    arm_group_.setPathConstraints(constraints);
+    
+    RCLCPP_INFO(node_->get_logger(), "Camera constraint added: free to rotate around global Z, Z-axis fixed");
+  }
+
+  /**
+   * @brief Clear all path constraints
+   */
+  void clearConstraints()
+  {
+    moveit_msgs::msg::Constraints empty_constraints;
+    arm_group_.setPathConstraints(empty_constraints);
+  }
+
+  /**
    * @brief Move to a Cartesian pose using the current planner pipeline
    * @param pose Target end-effector pose
    * @return true if movement succeeded, false otherwise
@@ -349,20 +389,24 @@ private:
 
       target.position.z += 0.11; // 11 cm offset to align claws with block top
 
-      // Set upright orientation (gripper pointing down, camera facing up)
-      // Using quaternion that represents 180 degree rotation around X axis
-      target.orientation.x = 1.0;
-      target.orientation.y = 0.0;
+      // Set orientation to gripper pointing down (-Z global) with camera in +Y
+      // Quaternion for 90° rotation around Y axis
+      target.orientation.x = 0.0;
+      target.orientation.y = 0.707;
       target.orientation.z = 0.0;
-      target.orientation.w = 0.0;
+      target.orientation.w = 0.707;
 
       geometry_msgs::msg::Pose above = target;
       above.position.z += 0.10; // 10 cm above the adjusted position
+
+      // Add orientation constraint: allow free rotation around global Z, but fix Z-axis direction
+      allowCameraZRotationConstraint();
 
       // Move to above the block
       if (!moveToPose(above))
       {
         RCLCPP_ERROR(node_->get_logger(), "Vision Pick: failed to reach above-block pose");
+        clearConstraints();
         return false;
       }
 
@@ -372,9 +416,11 @@ private:
       if (!moveToPose(target))
       {
         RCLCPP_ERROR(node_->get_logger(), "Vision Pick: failed to reach block pose");
+        clearConstraints();
         return false;
       }
 
+      clearConstraints();
       rclcpp::sleep_for(std::chrono::milliseconds(500));
     }
     else
