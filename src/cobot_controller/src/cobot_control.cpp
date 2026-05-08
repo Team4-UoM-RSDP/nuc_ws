@@ -141,6 +141,9 @@ private:
     arm_group_.setMaxVelocityScalingFactor(0.3);
     arm_group_.setMaxAccelerationScalingFactor(0.3);
 
+    // Set end effector link to gripper (the actual grasping point)
+    arm_group_.setEndEffectorLink("gripper_base");
+
     RCLCPP_INFO(node_->get_logger(), "MoveGroupInterface initialized successfully");
     RCLCPP_INFO(node_->get_logger(), "Planning pipeline: %s, Planner: %s",
                 arm_group_.getPlanningPipelineId().c_str(),
