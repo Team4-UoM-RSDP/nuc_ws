@@ -17,6 +17,8 @@
 #include <chrono>
 #include <cmath>
 #include <moveit/move_group_interface/move_group_interface.hpp>
+#include <moveit/planning_scene_interface/planning_scene_interface.hpp>
+#include <moveit_msgs/msg/constraints.hpp>
 #include <controller_interfaces/srv/controller_set.hpp>
 #include <controller_interfaces/srv/controller_position_set.hpp>
 
@@ -249,6 +251,45 @@ private:
   }
 
   /**
+   * @brief Add orientation constraint to keep gripper upright (camera facing positive Z)
+   * @param orientation_x X component of quaternion
+   * @param orientation_y Y component of quaternion
+   * @param orientation_z Z component of quaternion
+   * @param orientation_w W component of quaternion
+   * @param tolerance Tolerance in radians for orientation constraint
+   */
+  void addOrientationConstraint(double orientation_x, double orientation_y, double orientation_z, double orientation_w, double tolerance = 0.1)
+  {
+    moveit_msgs::msg::Constraints constraints;
+    moveit_msgs::msg::OrientationConstraint orientation_constraint;
+    
+    orientation_constraint.header.frame_id = "base_link";
+    orientation_constraint.link_name = "gripper_base";
+    orientation_constraint.orientation.x = orientation_x;
+    orientation_constraint.orientation.y = orientation_y;
+    orientation_constraint.orientation.z = orientation_z;
+    orientation_constraint.orientation.w = orientation_w;
+    orientation_constraint.absolute_x_axis_tolerance = tolerance;
+    orientation_constraint.absolute_y_axis_tolerance = tolerance;
+    orientation_constraint.absolute_z_axis_tolerance = tolerance;
+    orientation_constraint.weight = 1.0;
+    
+    constraints.orientation_constraints.push_back(orientation_constraint);
+    arm_group_.setPathConstraints(constraints);
+    
+    RCLCPP_INFO(node_->get_logger(), "Orientation constraint added: camera stays upright during vision pick");
+  }
+
+  /**
+   * @brief Clear all path constraints
+   */
+  void clearConstraints()
+  {
+    moveit_msgs::msg::Constraints empty_constraints;
+    arm_group_.setPathConstraints(empty_constraints);
+  }
+
+  /**
    * @brief Move to a Cartesian pose using the current planner pipeline
    * @param pose Target end-effector pose
    * @return true if movement succeeded, false otherwise
@@ -350,10 +391,15 @@ private:
       geometry_msgs::msg::Pose above = target;
       above.position.z += 0.10; // 10 cm above
 
+      // Add orientation constraint to keep gripper upright (camera pointing up, not down)
+      // Using identity quaternion with constraint tolerance to maintain upright orientation
+      addOrientationConstraint(0.0, 0.0, 0.0, 1.0, 0.2);
+
       // Move to above the block
       if (!moveToPose(above))
       {
         RCLCPP_ERROR(node_->get_logger(), "Vision Pick: failed to reach above-block pose");
+        clearConstraints();
         return false;
       }
 
@@ -363,9 +409,11 @@ private:
       if (!moveToPose(target))
       {
         RCLCPP_ERROR(node_->get_logger(), "Vision Pick: failed to reach block pose");
+        clearConstraints();
         return false;
       }
 
+      clearConstraints();
       rclcpp::sleep_for(std::chrono::milliseconds(500));
     }
     else
