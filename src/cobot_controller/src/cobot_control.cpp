@@ -337,7 +337,8 @@ private:
         std::lock_guard<std::mutex> lock(block_pose_mutex_);
         if (!has_block_pose_)
         {
-          RCLCPP_WARN(node_->get_logger(), "Vision pick requested but no block pose available; call /controller_position_set first");
+          RCLCPP_WARN(node_->get_logger(), "Vision pick requested but no block pose available; returning to home and waiting for /controller_position_set");
+          moveToSetPosition("home");
           return false;
         }
         target = last_block_pose_;
